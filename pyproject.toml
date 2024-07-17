@@ -12,7 +12,8 @@ packages = [
     { include = "traj_manipulation", from = "src" },
     { include = "WeldSend", from = "src" },
     { include = "motoman_def", from = "src" },
-    { include = "weldRRSensor", from = "src" }
+    { include = "weldRRSensor", from = "src" },
+    { include = "StreamingSend", from = "src" }
 ]
 
 authors = ["Honglu He <heh6@rpi.edu>",]
