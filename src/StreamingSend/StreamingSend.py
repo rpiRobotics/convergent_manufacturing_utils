@@ -28,8 +28,6 @@ class StreamingSend(object):
 	def deinitialize_robot(self):
 		self.RR_robot.command_mode = self.halt_mode
 		self.RR_robot.disable()
-		time.sleep(0.1)
-		self.RR_robot.reset_errors()
 
 	def start_recording(self):
 		self.joint_recording=[]
