@@ -8,7 +8,7 @@ def spiralize(traj1,traj2,reversed=False):
 	###interpolate traj1 to traj2 with spiral printing
 	###interp traj2 to be of same length
 
-	traj2_interp=interp1d(np.linspace(0,1,num=len(traj2)),traj2,axis=0)(np.linspace(0,1,num=len(traj1)))
+	traj2_interp=interp1d(np.linspace(0,1,num=len(traj2)),traj2,axis=0, bounds_error=False, fill_value="extrapolate")(np.linspace(0,1,num=len(traj1)))
 	if not reversed:
 		weight=np.linspace(1,0.5,num=len(traj1))
 	else:
