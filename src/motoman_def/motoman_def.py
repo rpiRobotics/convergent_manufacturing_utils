@@ -1,10 +1,11 @@
 from general_robotics_toolbox import * 
+from general_robotics_toolbox import tesseract as rox_tesseract
 from general_robotics_toolbox import robotraconteur as rr_rox
 
 import numpy as np
-import yaml, pickle
+import yaml, copy, time
+import pickle
 from robotics_utils import *
-
 
 ex=np.array([[1.],[0.],[0.]])
 ey=np.array([[0.],[1.],[0.]])
@@ -24,6 +25,7 @@ class robot_obj(object):
 		self.robot_name=robot_name
 		with open(def_path, 'r') as f:
 			self.robot = rr_rox.load_robot_info_yaml_to_robot(f)
+   
 
 		self.def_path=def_path
 		#define robot without tool
@@ -125,10 +127,10 @@ class robot_obj(object):
 						self.calib_H[0,i] = marker_data['H'][i]['x']
 						self.calib_H[1,i] = marker_data['H'][i]['y']
 						self.calib_H[2,i] = marker_data['H'][i]['z']
-				if 'zero_config' in marker_data.keys():
-					self.calib_zero_config = np.array(marker_data['zero_config'])
-					self.robot.joint_upper_limit = self.robot.joint_upper_limit-self.calib_zero_config
-					self.robot.joint_lower_limit = self.robot.joint_lower_limit-self.calib_zero_config
+				# if 'zero_config' in marker_data.keys():
+				# 	self.calib_zero_config = np.array(marker_data['zero_config'])
+				# 	self.robot.joint_upper_limit = self.robot.joint_upper_limit-self.calib_zero_config
+				# 	self.robot.joint_lower_limit = self.robot.joint_lower_limit-self.calib_zero_config
 		self.tool_marker_config_file=tool_marker_config_file
 		self.T_tool_toolmarker = None # T^tool_toolmarker
 		if len(tool_marker_config_file)>0:
@@ -149,6 +151,15 @@ class robot_obj(object):
 					# add d
 					T_d1_d2 = Transform(np.eye(3),p=[0,0,d-15])
 					self.T_tool_toolmarker = self.T_tool_toolmarker*T_d1_d2
+				if 'calib_toolmarker_flange_pose' in marker_data.keys():
+					p = [marker_data['calib_toolmarker_flange_pose']['position']['x'],
+						marker_data['calib_toolmarker_flange_pose']['position']['y'],
+						marker_data['calib_toolmarker_flange_pose']['position']['z']]
+					q = [marker_data['calib_toolmarker_flange_pose']['orientation']['w'],
+						marker_data['calib_toolmarker_flange_pose']['orientation']['x'],
+						marker_data['calib_toolmarker_flange_pose']['orientation']['y'],
+						marker_data['calib_toolmarker_flange_pose']['orientation']['z']]
+					self.T_toolmarker_flange = Transform(q2R(q),p)
 
 	def get_acc(self,q_all,direction=[]):
 		###get acceleration limit from q config, assume last 3 joints acc fixed direction is 3 length vector, 0 is -, 1 is +
@@ -187,7 +198,7 @@ class robot_obj(object):
 
 		if q_all.ndim==1:
 			q=q_all
-			q = np.array(q)-self.calib_zero_config
+			# q = np.array(q)-self.calib_zero_config
 			pose_temp=fwdkin(self.robot,q)
 
 			if world:
@@ -211,11 +222,95 @@ class robot_obj(object):
 	def jacobian(self,q):
 		return robotjacobian(self.robot,q)
 
+	def fwd_ph(self,q,ph_param):
+     
+		q=np.array(q)
+    
+		origin_P=copy.deepcopy(self.robot.P)
+		origin_H=copy.deepcopy(self.robot.H)
+    
+		opt_P,opt_H = ph_param.predict(q[1:3])
+		self.robot.P=copy.deepcopy(opt_P)
+		self.robot.H=copy.deepcopy(opt_H)
+		robot_T = fwdkin(self.robot,q)
+  
+		self.robot.P=copy.deepcopy(origin_P)
+		self.robot.H=copy.deepcopy(origin_H)
+  
+		return robot_T
+
+	def jacobian_ph(self,q,ph_param):
+     
+		q=np.array(q)
+    
+		origin_P=copy.deepcopy(self.robot.P)
+		origin_H=copy.deepcopy(self.robot.H)
+    
+		opt_P,opt_H = ph_param.predict(q[1:3])
+		self.robot.P=opt_P
+		self.robot.H=opt_H
+		J = robotjacobian(self.robot,q)
+  
+		self.robot.P=origin_P
+		self.robot.H=origin_H
+  
+		return J
+
 	def inv(self,p,R=np.eye(3),last_joints=None):
 		pose=Transform(R,p)
 		q_all=robot6_sphericalwrist_invkin(self.robot,pose,last_joints)
 		
 		return q_all
+
+	def inv_iter(self,p,R=np.eye(3),q_seed=None,lim_factor=0):
+		## qp IK
+		q_sol = np.array(q_seed) # initial guess
+		Kw=0.1
+		Kq=0.00001*np.eye(6)
+		alpha=1
+		error_fb=999
+		termination_error=10-8
+		while error_fb>0.0001:
+			robot_T = self.fwd(q_sol)
+			## error=euclideans norm (p)+forbinius norm (R)
+			p_norm= np.linalg.norm(robot_T.p-p)
+			R_norm=np.linalg.norm(np.matmul(robot_T.R.T,R)-np.eye(3))
+			last_error_fb=error_fb
+			error_fb=p_norm+R_norm
+   
+			# termination condition
+			if np.abs(last_error_fb-error_fb)<termination_error:
+				# print("Termination condition reached. The error is not decaying anymore")
+				break
+
+			# print(error_fb)
+			if error_fb>1000:
+				print("Error too large:",error_fb)
+				raise AssertionError
+			
+			## prepare Jacobian matrix w.r.t positioner
+			J=self.jacobian(q_sol)
+			J_all_p=J[3:,:]
+			J_all_R=J[:3,:]
+
+			H=np.dot(np.transpose(J_all_p),J_all_p)+Kq+Kw*np.dot(np.transpose(J_all_R),J_all_R)
+			H=(H+np.transpose(H))/2
+
+			vd = p-robot_T.p
+			omega_d=s_err_func(robot_T.R@R.T)
+			# omega_d=s_err_func(self.scan_R[i].T@Rt1_t2)
+
+			f=-np.dot(np.transpose(J_all_p),vd)+Kw*np.dot(np.transpose(J_all_R),omega_d)
+			try:
+				qdot=solve_qp(H,f,lb=self.lower_limit-q_sol+lim_factor*np.ones(6),\
+						ub=self.upper_limit-q_sol-lim_factor*np.ones(6),solver='quadprog')
+			except:
+				from qpsolvers import solve_qp
+				qdot=solve_qp(H,f,lb=self.lower_limit-q_sol+lim_factor*np.ones(6),\
+						ub=self.upper_limit-q_sol-lim_factor*np.ones(6),solver='quadprog')
+			
+			q_sol=q_sol+alpha*qdot
+		return q_sol
 
 	###find a continous trajectory given Cartesion pose trajectory
 	def find_curve_js(self,curve,curve_R,q_seed=None):
@@ -349,10 +444,10 @@ class positioner_obj(object):
 						self.calib_H[1,i] = marker_data['H'][i]['y']
 						self.calib_H[2,i] = marker_data['H'][i]['z']
 				self.calib_zero_config=np.zeros(self.robot.H.shape[1])
-				if 'zero_config' in marker_data.keys():
-					self.calib_zero_config = np.array(marker_data['zero_config'])
-					self.robot.joint_upper_limit = self.robot.joint_upper_limit-self.calib_zero_config
-					self.robot.joint_lower_limit = self.robot.joint_lower_limit-self.calib_zero_config
+				# if 'zero_config' in marker_data.keys():
+				# 	self.calib_zero_config = np.array(marker_data['zero_config'])
+				# 	self.robot.joint_upper_limit = self.robot.joint_upper_limit-self.calib_zero_config
+				# 	self.robot.joint_lower_limit = self.robot.joint_lower_limit-self.calib_zero_config
 		self.tool_marker_config_file=tool_marker_config_file
 		self.T_tool_toolmarker = None # T^tool_toolmarker
 		if len(tool_marker_config_file)>0:
@@ -502,7 +597,7 @@ class positioner_obj(object):
 				return curve_js_all[0]
 			else:
 				curve_js_all=np.array(curve_js_all)
-				
+
 				diff_q0=np.abs(curve_js_all[:,0,0]-q_seed[0])
 				diff_q0_min_ind=np.nonzero(diff_q0==np.min(diff_q0))[0]
 				diff_q1=np.abs(curve_js_all[diff_q0_min_ind,0,1]-q_seed[1])
