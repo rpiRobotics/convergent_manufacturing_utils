@@ -1,6 +1,7 @@
 import numpy as np
 from general_robotics_toolbox import *
 from dx200_motion_program_exec_client import *
+from pandas import DataFrame, read_csv
 
 class WeldSend(object):
 	def __init__(self,client) -> None:
@@ -10,17 +11,31 @@ class WeldSend(object):
 
 	def jog_single(self,robot,q,v=1):
 		mp=MotionProgram(ROBOT_CHOICE=self.ROBOT_CHOICE_MAP[robot.robot_name],pulse2deg=robot.pulse2deg, tool_num=self.ROBOT_TOOL_MAP[robot.robot_name])
-		mp.MoveJ(np.degrees(q),v,None)
+		if type(q)==list:
+			for q_wp in q:
+				mp.MoveJ(np.degrees(q_wp),v,None)
+		else:
+			mp.MoveJ(np.degrees(q),v,None)
 		self.client.execute_motion_program(mp)
 	
 	def jog_dual(self,robot1,robot2,q1,q2,v=1):
 		mp=MotionProgram(ROBOT_CHOICE=self.ROBOT_CHOICE_MAP[robot1.robot_name],ROBOT_CHOICE2=self.ROBOT_CHOICE_MAP[robot2.robot_name],pulse2deg=robot1.pulse2deg,pulse2deg_2=robot2.pulse2deg, tool_num=self.ROBOT_TOOL_MAP[robot1.robot_name])
-		mp.MoveJ(np.degrees(q1),v,None,target2=['MOVJ',np.degrees(q2),10])
+		
+		if type(q1)==list:
+			for i in range(len(q1)):
+				mp.MoveJ(np.degrees(q1[i]),v,None,target2=['MOVJ',np.degrees(q2[i]),10])
+		else:
+			mp.MoveJ(np.degrees(q1),v,None,target2=['MOVJ',np.degrees(q2),10])
 		self.client.execute_motion_program(mp)
 	
 	def jog_tri(self,robot1,positioner,robot2,q1,q_positioner,q2,v=1):
 		mp=MotionProgram(ROBOT_CHOICE=self.ROBOT_CHOICE_MAP[robot1.robot_name],ROBOT_CHOICE2=self.ROBOT_CHOICE_MAP[positioner.robot_name],ROBOT_CHOICE3=self.ROBOT_CHOICE_MAP[robot2.robot_name],pulse2deg=robot1.pulse2deg,pulse2deg_2=positioner.pulse2deg,pulse2deg_3=robot2.pulse2deg, tool_num=self.ROBOT_TOOL_MAP[robot1.robot_name])
-		mp.MoveJ(np.degrees(q1),v,None,target2=['MOVJ',np.degrees(q_positioner),None],target3=['MOVJ',np.degrees(q2),None])
+		
+		if type(q1)==list:
+			for i in range(len(q1)):
+				mp.MoveJ(np.degrees(q1[i]),v,None,target2=['MOVJ',np.degrees(q_positioner[i]),None],target3=['MOVJ',np.degrees(q2[i]),10])
+		else:
+			mp.MoveJ(np.degrees(q1),v,None,target2=['MOVJ',np.degrees(q_positioner),None],target3=['MOVJ',np.degrees(q2),None])
 		self.client.execute_motion_program(mp)
 
 
@@ -233,3 +248,35 @@ class WeldSend(object):
 
 
 		return  curve_exe_pw[:,:3], curve_exe_pw[:,3:], timestamp
+
+	def save_weld_cmd(self,filename,breakpoints,primitives,q_bp,weld_v):
+
+		q_bp_new=[]
+		weld_v_new=[]
+		for i in range(len(primitives)):
+			if len(q_bp[i])==2:
+				q_bp_new.append([np.array(q_bp[i][0]),np.array(q_bp[i][1])])
+				weld_v_new.append([weld_v[i],weld_v[i]])
+			else:
+				q_bp_new.append([np.array(q_bp[i][0])])
+				weld_v_new.append([weld_v[i]])
+		df=DataFrame({'breakpoints':breakpoints,'primitives':primitives, 'q_bp':q_bp_new, 'weld_v':weld_v_new})
+		df.to_csv(filename,header=True,index=False)
+	
+	def load_weld_cmd(self,filename):
+		
+		data = read_csv(filename)
+		breakpoints=np.array(data['breakpoints'].tolist()).astype(int)
+		primitives=data['primitives'].tolist()
+		qs=data['q_bp'].tolist()
+		weld_v_str=np.array(data['weld_v'].tolist())
+		q_bp=[]
+		for q in qs:
+			endpoint=q[8:-3].split(',')
+			qarr = np.array(list(map(float, endpoint)))
+			q_bp.append([np.array(qarr)])
+		weld_v=[]
+		for v in weld_v_str:
+			weld_v.append(float(v[1:-1]))
+
+		return breakpoints,primitives,q_bp,weld_v
