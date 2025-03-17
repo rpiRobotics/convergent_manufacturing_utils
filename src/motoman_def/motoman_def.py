@@ -262,7 +262,7 @@ class robot_obj(object):
 		
 		return q_all
 
-	def inv_iter(self,p,R=np.eye(3),q_seed=None,lim_factor=0):
+	def inv_iter(self,p,R=np.eye(3),ph_param=None,q_seed=None,lim_factor=0):
 		## qp IK
 		q_sol = np.array(q_seed) # initial guess
 		Kw=0.1
@@ -271,7 +271,10 @@ class robot_obj(object):
 		error_fb=999
 		termination_error=10-8
 		while error_fb>0.0001:
-			robot_T = self.fwd(q_sol)
+			if ph_param is None:
+				robot_T = self.fwd(q_sol)
+			else:
+				robot_T = self.fwd_ph(q_sol,ph_param)
 			## error=euclideans norm (p)+forbinius norm (R)
 			p_norm= np.linalg.norm(robot_T.p-p)
 			R_norm=np.linalg.norm(np.matmul(robot_T.R.T,R)-np.eye(3))
@@ -289,7 +292,10 @@ class robot_obj(object):
 				raise AssertionError
 			
 			## prepare Jacobian matrix w.r.t positioner
-			J=self.jacobian(q_sol)
+			if ph_param is None:
+				J=self.jacobian(q_sol)
+			else:
+				J=self.jacobian_ph(q_sol,ph_param)
 			J_all_p=J[3:,:]
 			J_all_R=J[:3,:]
 
