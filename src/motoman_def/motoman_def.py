@@ -222,7 +222,7 @@ class robot_obj(object):
 	def jacobian(self,q):
 		return robotjacobian(self.robot,q)
 
-	def fwd_ph(self,q,ph_param):
+	def fwd_ph(self,q,ph_param,world=False):
      
 		q=np.array(q)
     
@@ -232,7 +232,7 @@ class robot_obj(object):
 		opt_P,opt_H = ph_param.predict(q[1:3])
 		self.robot.P=copy.deepcopy(opt_P)
 		self.robot.H=copy.deepcopy(opt_H)
-		robot_T = fwdkin(self.robot,q)
+		robot_T = self.fwd(q,world=world)
   
 		self.robot.P=copy.deepcopy(origin_P)
 		self.robot.H=copy.deepcopy(origin_H)
