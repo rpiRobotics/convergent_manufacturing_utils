@@ -262,15 +262,15 @@ class robot_obj(object):
 		
 		return q_all
 
-	def inv_iter(self,p,R=np.eye(3),ph_param=None,q_seed=None,lim_factor=0):
+	def inv_iter(self,p,R=np.eye(3),ph_param=None,q_seed=None,lim_factor=0,max_iter=100):
 		## qp IK
 		q_sol = np.array(q_seed) # initial guess
 		Kw=0.1
 		Kq=0.00001*np.eye(6)
-		alpha=1
+		alpha=0.5
 		error_fb=999
 		termination_error=10-8
-		while error_fb>0.0001:
+		for iter_i in range(max_iter):
 			if ph_param is None:
 				robot_T = self.fwd(q_sol)
 			else:
