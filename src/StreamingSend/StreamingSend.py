@@ -85,7 +85,7 @@ class StreamingSend(object):
 		# ensure the command is sent at the correct streaming rate
 		# start time is the last time the command was sent
 		if start_time:
-			while time.perf_counter()-start_time < 1/self.streaming_rate*0.99:
+			while time.perf_counter()-start_time < 1/self.streaming_rate*0.975:
 				time.sleep(0)	#sleep 0 for bg thread to run
 				continue
 		
