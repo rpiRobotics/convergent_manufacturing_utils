@@ -81,19 +81,19 @@ class StreamingSend(object):
 		
 		# Set the joint command
 		joint_cmd1.command = qd
-
-		# Send the joint command to the robot
-		self.RR_robot.position_command.PokeOutValue(joint_cmd1)
-
+		
+		# ensure the command is sent at the correct streaming rate
+		# start time is the last time the command was sent
 		if start_time:
-			while time.perf_counter()-start_time<1/self.streaming_rate-0.0007:
+			while time.perf_counter()-start_time < 1/self.streaming_rate*0.99:
 				time.sleep(0)	#sleep 0 for bg thread to run
 				continue
-			
+		
+		# Send the joint command to the robot
+		self.RR_robot.position_command.PokeOutValue(joint_cmd1)
 		
 		return 
-
-
+	
 	def jog2q(self,qd,point_distance=0.2):
 		###JOG TO starting pose first
 		res, robot_state, _ = self.RR_robot_state.TryGetInValue()
