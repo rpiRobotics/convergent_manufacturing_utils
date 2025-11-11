@@ -1,4 +1,5 @@
 from RobotRaconteur.Client import *
+from RobotRaconteurCompanion.Util.ImageUtil import ImageUtil
 import time, copy, pickle, wave
 import numpy as np
 from matplotlib import pyplot as plt
@@ -6,6 +7,7 @@ from matplotlib import pyplot as plt
 class WeldRRSensor(object):
 	def __init__(self,weld_service=None,\
 				cam_service=None,\
+                cam_service_2=None,\
 				microphone_service=None,\
 				current_service=None) -> None:
 		
@@ -18,7 +20,7 @@ class WeldRRSensor(object):
 			self.clean_weld_record()
 			self.welder_state_sub.WireValueChanged += self.weld_cb
 		
-		## IR Camera Service
+		## IR Camera Service - FLIR
 		self.cam_ser=cam_service
 		if cam_service:
 			self.ir_image_consts = RRN.GetConstants('com.robotraconteur.image', self.cam_ser)
@@ -46,6 +48,20 @@ class WeldRRSensor(object):
 				pass
 			self.clean_ir_record()
 		
+		## IR Camera Service 2 - Xiris
+		self.cam_ser_2=cam_service_2
+		if cam_service_2:
+			self.cam_ser_2.setf_param("camera_operating_mode", RR.VarValue(int(1900),"int32"))
+
+			self.cam_pipe_2=self.cam_ser_2.frame_stream.Connect(-1)
+			#Set the callback for new pipe packets
+			self.start_ir_cb_2 = False
+			self.cam_pipe_2.PacketReceivedEvent+=self.ir_cb_2
+			try:
+				self.cam_ser_2.start_streaming()
+			except:
+				pass
+			self.clean_ir_record_2()
 		## microphone service
 		self.mic_service=microphone_service
 		if microphone_service:
@@ -72,6 +88,9 @@ class WeldRRSensor(object):
 		if self.cam_ser:
 			self.clean_ir_record()
 			self.start_ir_cb=True
+		if self.cam_ser_2:
+			self.clean_ir_record_2()
+			self.start_ir_cb_2=True
 		if self.mic_service:
 			self.clean_mic_record()
 			self.start_mic_cb=True
@@ -84,6 +103,8 @@ class WeldRRSensor(object):
 			self.clean_weld_record()
 		if self.cam_ser:
 			self.clean_ir_record()
+		if self.cam_ser_2:
+			self.clean_ir_record_2()
 		if self.mic_service:
 			self.clean_mic_record()
 		if self.current_service:
@@ -93,6 +114,7 @@ class WeldRRSensor(object):
 
 		self.start_weld_cb=False
 		self.start_ir_cb=False
+		self.start_ir_cb_2=False
 		self.start_mic_cb=False
 		self.start_current_cb=False
 	
@@ -102,6 +124,8 @@ class WeldRRSensor(object):
 			self.save_weld_file(filedir)
 		if self.cam_ser:
 			self.save_ir_file(filedir)
+		if self.cam_ser_2:
+			self.save_ir_file_2(filedir)
 		if self.mic_service:
 			self.save_mic_file(filedir)
 		if self.current_service:
@@ -118,6 +142,14 @@ class WeldRRSensor(object):
 			fig = plt.figure(1)
 			sleep_t=float(3./len(self.ir_recording))
 			for r in self.ir_recording:
+				plt.imshow(r, cmap='inferno', aspect='auto')
+				plt.colorbar(format='%.2f')
+				plt.pause(sleep_t)
+				plt.clf()
+		if self.cam_ser_2:
+			fig = plt.figure(1)
+			sleep_t=float(3./len(self.ir_recording_2))
+			for r in self.ir_recording_2:
 				plt.imshow(r, cmap='inferno', aspect='auto')
 				plt.colorbar(format='%.2f')
 				plt.pause(sleep_t)
@@ -178,6 +210,11 @@ class WeldRRSensor(object):
 		self.ir_timestamp=[]
 		self.ir_recording=[]
 
+	def clean_ir_record_2(self):
+		self.ir_timestamp_2=[]
+		self.ir_recording_2=[]
+
+
 	def ir_cb(self,pipe_ep):
 
 		# Loop to get the newest frame
@@ -212,6 +249,25 @@ class WeldRRSensor(object):
 				pickle.dump(np.array(self.ir_recording),file)
 		np.savetxt(filedir + "ir_stamps.csv",self.ir_timestamp,delimiter=',')
 	
+	def ir_cb_2(self,pipe_ep):
+		# Loop to get the newest frame
+		while (pipe_ep.Available > 0):
+			# Receive the packet
+			rr_img = pipe_ep.ReceivePacket()
+			if self.start_ir_cb_s:
+                # convert the packet to an image
+                cv_img=img_util.image_to_array(rr_img)
+
+                # save frame and timestamp
+				self.ir_recording.append(cv_img)
+				self.ir_timestamp.append(time.perf_counter())
+
+	def save_ir_file_2(self,filedir):
+
+		with open(filedir+'ir_recording_2.pickle','wb') as file:
+				pickle.dump(np.array(self.ir_recording),file)
+		np.savetxt(filedir + "ir_stamps_2.csv",self.ir_timestamp,delimiter=',')
+
 	def clean_mic_record(self):
 
 		self.audio_recording=[]
@@ -244,7 +300,7 @@ class WeldRRSensor(object):
 		except:
 			print("Mic has no recording!!!")
 
-	def save_data_streaming(self,recorded_dir,current_data,welding_data,audio_recording,robot_data,flir_logging,flir_ts,slice_num,section_num=0):
+	def save_data_streaming(self,recorded_dir,current_data,welding_data,audio_recording,robot_data,flir_logging,flir_ts,xir_logging=None, xir_ts=None, slice_num,section_num=0):
 		###MAKING DIR
 		layer_data_dir=recorded_dir+'layer_'+str(slice_num)+'_'+str(section_num)+'/'
 		Path(layer_data_dir).mkdir(exist_ok=True)
@@ -275,5 +331,12 @@ class WeldRRSensor(object):
 		with open(layer_data_dir+'ir_recording.pickle','wb') as file:
 				pickle.dump(np.array(flir_logging),file)
 		np.savetxt(layer_data_dir + "ir_stamps.csv",flir_ts,delimiter=',')
+        
+		###XIR SAVING
+        if xir_ts is not None:
+            xir_ts=np.array(xir_ts)
+            with open(layer_data_dir+'ir_recording_2.pickle','wb') as file:
+                    pickle.dump(np.array(xir_logging),file)
+            np.savetxt(layer_data_dir + "ir_stamps_2.csv",xir_ts,delimiter=',')
 		
 		return
