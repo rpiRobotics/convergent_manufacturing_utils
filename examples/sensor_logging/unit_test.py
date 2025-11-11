@@ -7,12 +7,15 @@ from weldRRSensor import *
 microphone = RRN.ConnectService('rr+tcp://192.168.55.15:60828?service=microphone')
 ########################################################RR FLIR########################################################
 flir=RRN.ConnectService('rr+tcp://192.168.55.15:60827/?service=camera')
+########################################################RR XIRIS########################################################
+xiris=RRN.ConnectService('rr+tcp://192.168.1.113:59824/?service=camera')
 ########################################################RR CURRENT########################################################
 current_sub=RRN.SubscribeService('rr+tcp://192.168.55.21:12182?service=Current')
 
 #############################################################UNIT TEST#############################################################
+rr_sensors = WeldRRSensor(weld_service=None,cam_service=flir,cam_service_2=xiris, microphone_service=None,current_service=None)
 # rr_sensors = WeldRRSensor(weld_service=None,cam_service=flir,microphone_service=None,current_service=None)
-rr_sensors = WeldRRSensor(weld_service=None,cam_service=flir,microphone_service=microphone,current_service=None)
+# rr_sensors = WeldRRSensor(weld_service=None,cam_service=flir,microphone_service=microphone,current_service=None)
 # rr_sensors = WeldRRSensor(weld_service=None,cam_service=None,microphone_service=None,current_service=current_sub)
 counts=0
 micrphone_length_all=[]
