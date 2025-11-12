@@ -5,338 +5,340 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 class WeldRRSensor(object):
-	def __init__(self,weld_service=None,\
-				cam_service=None,\
-                cam_service_2=None,\
-				microphone_service=None,\
-				current_service=None) -> None:
-		
-		## weld service
-		self.weld_service=weld_service
-		if weld_service:
-			self.weld_obj = self.weld_service.GetDefaultClientWait(3)  # connect, timeout=30s
-			self.welder_state_sub = self.weld_service.SubscribeWire("welder_state")
-			self.start_weld_cb = False
-			self.clean_weld_record()
-			self.welder_state_sub.WireValueChanged += self.weld_cb
-		
-		## IR Camera Service - FLIR
-		self.cam_ser=cam_service
-		if cam_service:
-			self.ir_image_consts = RRN.GetConstants('com.robotraconteur.image', self.cam_ser)
+    def __init__(self,weld_service=None,\
+            cam_service=None,\
+            cam_service_2=None,\
+            microphone_service=None,\
+            current_service=None) -> None:
 
-			self.cam_ser.setf_param("focus_pos", RR.VarValue(int(1900),"int32"))
-			self.cam_ser.setf_param("object_distance", RR.VarValue(0.4,"double"))
-			self.cam_ser.setf_param("reflected_temperature", RR.VarValue(291.15,"double"))
-			self.cam_ser.setf_param("atmospheric_temperature", RR.VarValue(293.15,"double"))
-			self.cam_ser.setf_param("relative_humidity", RR.VarValue(50,"double"))
-			self.cam_ser.setf_param("ext_optics_temperature", RR.VarValue(293.15,"double"))
-			self.cam_ser.setf_param("ext_optics_transmission", RR.VarValue(0.99,"double"))
-			self.cam_ser.setf_param("current_case", RR.VarValue(2,"int32"))
-			self.cam_ser.setf_param("ir_format", RR.VarValue("radiometric","string"))
-			self.cam_ser.setf_param("object_emissivity", RR.VarValue(0.13,"double"))
-			self.cam_ser.setf_param("scale_limit_low", RR.VarValue(293.15,"double"))
-			self.cam_ser.setf_param("scale_limit_upper", RR.VarValue(5000,"double"))
+        ## weld service
+        self.weld_service=weld_service
+        if weld_service:
+            self.weld_obj = self.weld_service.GetDefaultClientWait(3)  # connect, timeout=30s
+            self.welder_state_sub = self.weld_service.SubscribeWire("welder_state")
+            self.start_weld_cb = False
+            self.clean_weld_record()
+            self.welder_state_sub.WireValueChanged += self.weld_cb
 
-			self.cam_pipe=self.cam_ser.frame_stream.Connect(-1)
-			#Set the callback for new pipe packets
-			self.start_ir_cb = False
-			self.cam_pipe.PacketReceivedEvent+=self.ir_cb
-			try:
-				self.cam_ser.start_streaming()
-			except:
-				pass
-			self.clean_ir_record()
-		
-		## IR Camera Service 2 - Xiris
-		self.cam_ser_2=cam_service_2
-		if cam_service_2:
-			self.cam_ser_2.setf_param("camera_operating_mode", RR.VarValue(int(1900),"int32"))
+        ## IR Camera Service - FLIR
+        self.cam_ser=cam_service
+        if cam_service:
+            self.ir_image_consts = RRN.GetConstants('com.robotraconteur.image', self.cam_ser)
 
-			self.cam_pipe_2=self.cam_ser_2.frame_stream.Connect(-1)
-			#Set the callback for new pipe packets
-			self.start_ir_cb_2 = False
-			self.cam_pipe_2.PacketReceivedEvent+=self.ir_cb_2
-			try:
-				self.cam_ser_2.start_streaming()
-			except:
-				pass
-			self.clean_ir_record_2()
-		## microphone service
-		self.mic_service=microphone_service
-		if microphone_service:
-			self.mic_samplerate = 44100
-			self.mic_channels = 1
-			self.mic_service=microphone_service
-			self.mic_pipe = self.mic_service.microphone_stream.Connect(-1)
-			self.clean_mic_record()
-			self.start_mic_cb=False
-			self.mic_pipe.PacketReceivedEvent+=self.microphone_cb
+            self.cam_ser.setf_param("focus_pos", RR.VarValue(int(1900),"int32"))
+            self.cam_ser.setf_param("object_distance", RR.VarValue(0.4,"double"))
+            self.cam_ser.setf_param("reflected_temperature", RR.VarValue(291.15,"double"))
+            self.cam_ser.setf_param("atmospheric_temperature", RR.VarValue(293.15,"double"))
+            self.cam_ser.setf_param("relative_humidity", RR.VarValue(50,"double"))
+            self.cam_ser.setf_param("ext_optics_temperature", RR.VarValue(293.15,"double"))
+            self.cam_ser.setf_param("ext_optics_transmission", RR.VarValue(0.99,"double"))
+            self.cam_ser.setf_param("current_case", RR.VarValue(2,"int32"))
+            self.cam_ser.setf_param("ir_format", RR.VarValue("radiometric","string"))
+            self.cam_ser.setf_param("object_emissivity", RR.VarValue(0.13,"double"))
+            self.cam_ser.setf_param("scale_limit_low", RR.VarValue(293.15,"double"))
+            self.cam_ser.setf_param("scale_limit_upper", RR.VarValue(5000,"double"))
 
-		self.current_service=current_service
-		if current_service:
-			self.current_state_sub = self.current_service.SubscribeWire("current")
-			self.start_current_cb = False
-			self.clean_current_record()
-			self.current_state_sub.WireValueChanged += self.current_cb
+            self.cam_pipe=self.cam_ser.frame_stream.Connect(-1)
+            #Set the callback for new pipe packets
+            self.start_ir_cb = False
+            self.cam_pipe.PacketReceivedEvent+=self.ir_cb
+            try:
+                self.cam_ser.start_streaming()
+            except:
+                pass
+            self.clean_ir_record()
 
-	def start_all_sensors(self):
+        ## IR Camera Service 2 - Xiris
+        self.cam_ser_2=cam_service_2
+        if cam_service_2:
+            self.cam_ser_2.setf_param("camera_operating_mode", RR.VarValue("thermography","string"))
 
-		if self.weld_service:
-			self.clean_weld_record()
-			self.start_weld_cb=True
-		if self.cam_ser:
-			self.clean_ir_record()
-			self.start_ir_cb=True
-		if self.cam_ser_2:
-			self.clean_ir_record_2()
-			self.start_ir_cb_2=True
-		if self.mic_service:
-			self.clean_mic_record()
-			self.start_mic_cb=True
-		if self.current_service:
-			self.clean_current_record()
-			self.start_current_cb=True
-	
-	def clear_all_sensors(self):
-		if self.weld_service:
-			self.clean_weld_record()
-		if self.cam_ser:
-			self.clean_ir_record()
-		if self.cam_ser_2:
-			self.clean_ir_record_2()
-		if self.mic_service:
-			self.clean_mic_record()
-		if self.current_service:
-			self.clean_current_record()
+            self.img_util_2 = ImageUtil(client_obj=self.cam_ser_2)
+            self.cam_pipe_2=self.cam_ser_2.frame_stream.Connect(-1)
+            #Set the callback for new pipe packets
+            self.start_ir_cb_2 = False
+            self.cam_pipe_2.PacketReceivedEvent+=self.ir_cb_2
+            try:
+                self.cam_ser_2.start_streaming()
+            except:
+                print("error starting xiris stream")
+                pass
+            self.clean_ir_record_2()
+        ## microphone service
+        self.mic_service=microphone_service
+        if microphone_service:
+            self.mic_samplerate = 44100
+            self.mic_channels = 1
+            self.mic_service=microphone_service
+            self.mic_pipe = self.mic_service.microphone_stream.Connect(-1)
+            self.clean_mic_record()
+            self.start_mic_cb=False
+            self.mic_pipe.PacketReceivedEvent+=self.microphone_cb
 
-	def stop_all_sensors(self):
+        self.current_service=current_service
+        if current_service:
+            self.current_state_sub = self.current_service.SubscribeWire("current")
+            self.start_current_cb = False
+            self.clean_current_record()
+            self.current_state_sub.WireValueChanged += self.current_cb
 
-		self.start_weld_cb=False
-		self.start_ir_cb=False
-		self.start_ir_cb_2=False
-		self.start_mic_cb=False
-		self.start_current_cb=False
-	
-	def save_all_sensors(self,filedir):
+    def start_all_sensors(self):
 
-		if self.weld_service:
-			self.save_weld_file(filedir)
-		if self.cam_ser:
-			self.save_ir_file(filedir)
-		if self.cam_ser_2:
-			self.save_ir_file_2(filedir)
-		if self.mic_service:
-			self.save_mic_file(filedir)
-		if self.current_service:
-			self.save_current_file(filedir)
+        if self.weld_service:
+            self.clean_weld_record()
+            self.start_weld_cb=True
+        if self.cam_ser:
+            self.clean_ir_record()
+            self.start_ir_cb=True
+        if self.cam_ser_2:
+            self.clean_ir_record_2()
+            self.start_ir_cb_2=True
+        if self.mic_service:
+            self.clean_mic_record()
+            self.start_mic_cb=True
+        if self.current_service:
+            self.clean_current_record()
+            self.start_current_cb=True
 
-	
-	def test_all_sensors(self,t=3):
+    def clear_all_sensors(self):
+        if self.weld_service:
+            self.clean_weld_record()
+        if self.cam_ser:
+            self.clean_ir_record()
+        if self.cam_ser_2:
+            self.clean_ir_record_2()
+        if self.mic_service:
+            self.clean_mic_record()
+        if self.current_service:
+            self.clean_current_record()
 
-		self.start_all_sensors()
-		time.sleep(t)
-		self.stop_all_sensors()
+    def stop_all_sensors(self):
 
-		if self.cam_ser:
-			fig = plt.figure(1)
-			sleep_t=float(3./len(self.ir_recording))
-			for r in self.ir_recording:
-				plt.imshow(r, cmap='inferno', aspect='auto')
-				plt.colorbar(format='%.2f')
-				plt.pause(sleep_t)
-				plt.clf()
-		if self.cam_ser_2:
-			fig = plt.figure(1)
-			sleep_t=float(3./len(self.ir_recording_2))
-			for r in self.ir_recording_2:
-				plt.imshow(r, cmap='inferno', aspect='auto')
-				plt.colorbar(format='%.2f')
-				plt.pause(sleep_t)
-				plt.clf()
-		if self.mic_service:
-			first_channel = np.concatenate(self.audio_recording)
-			first_channel_int16=(first_channel*32767).astype(np.int16)
-			plt.plot(first_channel_int16)
-			plt.title("Microphone data")
-			plt.show()
-		if self.current_service:
-			print("Current data length:",len(self.current))
-			plt.plot(self.current_timestamp,self.current)
-			plt.title("Current data")
-			plt.show()
-	
-	def clean_weld_record(self):
+        self.start_weld_cb=False
+        self.start_ir_cb=False
+        self.start_ir_cb_2=False
+        self.start_mic_cb=False
+        self.start_current_cb=False
 
-		self.weld_timestamp=[]
-		self.weld_voltage=[]
-		self.weld_current=[]
-		self.weld_feedrate=[]
-		self.weld_energy=[]
+    def save_all_sensors(self,filedir):
 
-	def clean_current_record(self):
-		self.current=[]
-		self.current_timestamp=[]
-
-	def weld_cb(self, sub, value, ts):
-
-		if self.start_weld_cb:
-			# self.weld_timestamp.append(value.ts['microseconds'][0])
-			self.weld_timestamp.append(time.perf_counter())
-			self.weld_voltage.append(value.welding_voltage)
-			self.weld_current.append(value.welding_current)
-			self.weld_feedrate.append(value.wire_speed)
-			self.weld_energy.append(value.welding_energy)
-	
-	def current_cb(self, sub, value, ts):
-
-		if self.start_current_cb:
-			# self.current_timestamp.append(ts.seconds+ts.nanoseconds*1e-9)
-			self.current_timestamp.append(time.perf_counter())
-			self.current.append(value)
-
-	
-	def save_weld_file(self,filedir):
-		np.savetxt(filedir + 'welding.csv',
-				np.array([(np.array(self.weld_timestamp)), self.weld_voltage, self.weld_current, self.weld_feedrate, self.weld_energy]).T, delimiter=',',
-				header='timestamp,voltage,current,feedrate,energy', comments='')
-		
-	def save_current_file(self,filedir):
-		np.savetxt(filedir + 'current.csv',
-				np.array([(np.array(self.current_timestamp)), self.current]).T, delimiter=',',
-				header='timestamp,current', comments='')
-	
-	def clean_ir_record(self):
-		self.ir_timestamp=[]
-		self.ir_recording=[]
-
-	def clean_ir_record_2(self):
-		self.ir_timestamp_2=[]
-		self.ir_recording_2=[]
+        if self.weld_service:
+            self.save_weld_file(filedir)
+        if self.cam_ser:
+            self.save_ir_file(filedir)
+        if self.cam_ser_2:
+            self.save_ir_file_2(filedir)
+        if self.mic_service:
+            self.save_mic_file(filedir)
+        if self.current_service:
+            self.save_current_file(filedir)
 
 
-	def ir_cb(self,pipe_ep):
+    def test_all_sensors(self,t=3):
 
-		# Loop to get the newest frame
-		while (pipe_ep.Available > 0):
-			# Receive the packet
-			rr_img = pipe_ep.ReceivePacket()
-			if self.start_ir_cb:
-				if rr_img.image_info.encoding == self.ir_image_consts["ImageEncoding"]["mono8"]:
-					# Simple uint8 image
-					mat = rr_img.data.reshape([rr_img.image_info.height, rr_img.image_info.width], order='C')
-				elif rr_img.image_info.encoding == self.ir_image_consts["ImageEncoding"]["mono16"]:
-					data_u16 = np.array(rr_img.data.view(np.uint16))
-					mat = data_u16.reshape([rr_img.image_info.height, rr_img.image_info.width], order='C')
+        self.start_all_sensors()
+        time.sleep(t)
+        self.stop_all_sensors()
 
-				ir_format = rr_img.image_info.extended["ir_format"].data
+        if self.cam_ser:
+            fig = plt.figure(1)
+            sleep_t=float(3./len(self.ir_recording))
+            for r in self.ir_recording:
+                plt.imshow(r, cmap='inferno', aspect='auto')
+                plt.colorbar(format='%.2f')
+                plt.pause(sleep_t)
+                plt.clf()
+        if self.cam_ser_2:
+            fig = plt.figure(1)
+            sleep_t=float(3./len(self.ir_recording_2))
+            for r in self.ir_recording_2:
+                plt.imshow(r, cmap='inferno', aspect='auto')
+                plt.colorbar(format='%.2f')
+                plt.pause(sleep_t)
+                plt.clf()
+        if self.mic_service:
+            first_channel = np.concatenate(self.audio_recording)
+            first_channel_int16=(first_channel*32767).astype(np.int16)
+            plt.plot(first_channel_int16)
+            plt.title("Microphone data")
+            plt.show()
+        if self.current_service:
+            print("Current data length:",len(self.current))
+            plt.plot(self.current_timestamp,self.current)
+            plt.title("Current data")
+            plt.show()
 
-				if ir_format == "temperature_linear_10mK":
-					display_mat = (mat * 0.01) - 273.15
-				elif ir_format == "temperature_linear_100mK":
-					display_mat = (mat * 0.1) - 273.15
-				else:
-					display_mat = mat
+    def clean_weld_record(self):
 
-				# Convert the packet to an image and set the global variable
-				self.ir_recording.append(copy.deepcopy(display_mat))
-				# self.ir_timestamp.append(rr_img.image_info.data_header.ts['seconds']+rr_img.image_info.data_header.ts['nanoseconds']*1e-9)
-				self.ir_timestamp.append(time.perf_counter())
+        self.weld_timestamp=[]
+        self.weld_voltage=[]
+        self.weld_current=[]
+        self.weld_feedrate=[]
+        self.weld_energy=[]
 
-	def save_ir_file(self,filedir):
+    def clean_current_record(self):
+        self.current=[]
+        self.current_timestamp=[]
 
-		with open(filedir+'ir_recording.pickle','wb') as file:
-				pickle.dump(np.array(self.ir_recording),file)
-		np.savetxt(filedir + "ir_stamps.csv",self.ir_timestamp,delimiter=',')
-	
-	def ir_cb_2(self,pipe_ep):
-		# Loop to get the newest frame
-		while (pipe_ep.Available > 0):
-			# Receive the packet
-			rr_img = pipe_ep.ReceivePacket()
-			if self.start_ir_cb_s:
+    def weld_cb(self, sub, value, ts):
+
+        if self.start_weld_cb:
+            # self.weld_timestamp.append(value.ts['microseconds'][0])
+            self.weld_timestamp.append(time.perf_counter())
+            self.weld_voltage.append(value.welding_voltage)
+            self.weld_current.append(value.welding_current)
+            self.weld_feedrate.append(value.wire_speed)
+            self.weld_energy.append(value.welding_energy)
+
+    def current_cb(self, sub, value, ts):
+
+        if self.start_current_cb:
+            # self.current_timestamp.append(ts.seconds+ts.nanoseconds*1e-9)
+            self.current_timestamp.append(time.perf_counter())
+            self.current.append(value)
+
+
+    def save_weld_file(self,filedir):
+        np.savetxt(filedir + 'welding.csv',
+                   np.array([(np.array(self.weld_timestamp)), self.weld_voltage, self.weld_current, self.weld_feedrate, self.weld_energy]).T, delimiter=',',
+                   header='timestamp,voltage,current,feedrate,energy', comments='')
+
+    def save_current_file(self,filedir):
+        np.savetxt(filedir + 'current.csv',
+                   np.array([(np.array(self.current_timestamp)), self.current]).T, delimiter=',',
+                   header='timestamp,current', comments='')
+
+    def clean_ir_record(self):
+        self.ir_timestamp=[]
+        self.ir_recording=[]
+
+    def clean_ir_record_2(self):
+        self.ir_timestamp_2=[]
+        self.ir_recording_2=[]
+
+
+    def ir_cb(self,pipe_ep):
+
+        # Loop to get the newest frame
+        while (pipe_ep.Available > 0):
+            # Receive the packet
+            rr_img = pipe_ep.ReceivePacket()
+            if self.start_ir_cb:
+                if rr_img.image_info.encoding == self.ir_image_consts["ImageEncoding"]["mono8"]:
+                    # Simple uint8 image
+                    mat = rr_img.data.reshape([rr_img.image_info.height, rr_img.image_info.width], order='C')
+                elif rr_img.image_info.encoding == self.ir_image_consts["ImageEncoding"]["mono16"]:
+                    data_u16 = np.array(rr_img.data.view(np.uint16))
+                    mat = data_u16.reshape([rr_img.image_info.height, rr_img.image_info.width], order='C')
+
+                ir_format = rr_img.image_info.extended["ir_format"].data
+
+                if ir_format == "temperature_linear_10mK":
+                    display_mat = (mat * 0.01) - 273.15
+                elif ir_format == "temperature_linear_100mK":
+                    display_mat = (mat * 0.1) - 273.15
+                else:
+                    display_mat = mat
+
+                # Convert the packet to an image and set the global variable
+                self.ir_recording.append(copy.deepcopy(display_mat))
+                # self.ir_timestamp.append(rr_img.image_info.data_header.ts['seconds']+rr_img.image_info.data_header.ts['nanoseconds']*1e-9)
+                self.ir_timestamp.append(time.perf_counter())
+
+    def save_ir_file(self,filedir):
+
+        with open(filedir+'ir_recording.pickle','wb') as file:
+            pickle.dump(np.array(self.ir_recording),file)
+        np.savetxt(filedir + "ir_stamps.csv",self.ir_timestamp,delimiter=',')
+
+    def ir_cb_2(self,pipe_ep):
+        # Loop to get the newest frame
+        while (pipe_ep.Available > 0):
+            # Receive the packet
+            rr_img = pipe_ep.ReceivePacket()
+            if self.start_ir_cb_2:
                 # convert the packet to an image
-                cv_img=img_util.image_to_array(rr_img)
+                cv_img=self.img_util_2.image_to_array(rr_img)
 
                 # save frame and timestamp
-				self.ir_recording.append(cv_img)
-				self.ir_timestamp.append(time.perf_counter())
+                self.ir_recording_2.append(cv_img)
+                self.ir_timestamp_2.append(time.perf_counter())
 
-	def save_ir_file_2(self,filedir):
+    def save_ir_file_2(self,filedir):
 
-		with open(filedir+'ir_recording_2.pickle','wb') as file:
-				pickle.dump(np.array(self.ir_recording),file)
-		np.savetxt(filedir + "ir_stamps_2.csv",self.ir_timestamp,delimiter=',')
+        with open(filedir+'ir_recording_2.pickle','wb') as file:
+            pickle.dump(np.array(self.ir_recording_2),file)
+        np.savetxt(filedir + "ir_stamps_2.csv",self.ir_timestamp_2,delimiter=',')
 
-	def clean_mic_record(self):
+    def clean_mic_record(self):
 
-		self.audio_recording=[]
-	
-	def microphone_cb(self,pipe_ep):
+        self.audio_recording=[]
 
-		#Loop to get the newest frame
-		while (pipe_ep.Available > 0):
-			audio = pipe_ep.ReceivePacket().audio_data
-			if self.start_mic_cb:
-				#Receive the packet
-				self.audio_recording.extend(audio)
-	
-	def save_mic_file(self,filedir):
+    def microphone_cb(self,pipe_ep):
 
-		print("Mic length:",len(self.audio_recording))
+        #Loop to get the newest frame
+        while (pipe_ep.Available > 0):
+            audio = pipe_ep.ReceivePacket().audio_data
+            if self.start_mic_cb:
+                #Receive the packet
+                self.audio_recording.extend(audio)
 
-		try:
-			first_channel = np.concatenate(self.audio_recording)
+    def save_mic_file(self,filedir):
 
-			first_channel_int16=(first_channel*32767).astype(np.int16)
-			with wave.open(filedir+'mic_recording.wav', 'wb') as wav_file:
-				# Set the WAV file parameters
-				wav_file.setnchannels(self.mic_channels)
-				wav_file.setsampwidth(2)  # 2 bytes per sample (16-bit)
-				wav_file.setframerate(self.mic_samplerate)
+        print("Mic length:",len(self.audio_recording))
 
-				# Write the audio data to the WAV file
-				wav_file.writeframes(first_channel_int16.tobytes())
-		except:
-			print("Mic has no recording!!!")
+        try:
+            first_channel = np.concatenate(self.audio_recording)
 
-	def save_data_streaming(self,recorded_dir,current_data,welding_data,audio_recording,robot_data,flir_logging,flir_ts,xir_logging=None, xir_ts=None, slice_num,section_num=0):
-		###MAKING DIR
-		layer_data_dir=recorded_dir+'layer_'+str(slice_num)+'_'+str(section_num)+'/'
-		Path(layer_data_dir).mkdir(exist_ok=True)
+            first_channel_int16=(first_channel*32767).astype(np.int16)
+            with wave.open(filedir+'mic_recording.wav', 'wb') as wav_file:
+                # Set the WAV file parameters
+                wav_file.setnchannels(self.mic_channels)
+                wav_file.setsampwidth(2)  # 2 bytes per sample (16-bit)
+                wav_file.setframerate(self.mic_samplerate)
 
-		####AUDIO SAVING
-		first_channel = np.concatenate(audio_recording)
-		first_channel_int16=(first_channel*32767).astype(np.int16)
-		with wave.open(layer_data_dir+'mic_recording.wav', 'wb') as wav_file:
-			# Set the WAV file parameters
-			wav_file.setnchannels(1)
-			wav_file.setsampwidth(2)  # 2 bytes per sample (16-bit)
-			wav_file.setframerate(44100)
-			# Write the audio data to the WAV file
-			wav_file.writeframes(first_channel_int16.tobytes())
+                # Write the audio data to the WAV file
+                wav_file.writeframes(first_channel_int16.tobytes())
+        except:
+            print("Mic has no recording!!!")
 
-		####CURRENT SAVING
-		np.savetxt(layer_data_dir + 'current.csv',current_data, delimiter=',',header='timestamp,current', comments='')
+    def save_data_streaming(self,recorded_dir,current_data,welding_data,audio_recording,robot_data,flir_logging,flir_ts, slice_num,section_num=0, xir_logging=None, xir_ts=None):
+        ###MAKING DIR
+        layer_data_dir=recorded_dir+'layer_'+str(slice_num)+'_'+str(section_num)+'/'
+        Path(layer_data_dir).mkdir(exist_ok=True)
 
-		####FRONIUS SAVING
-		np.savetxt(layer_data_dir + 'welding.csv',welding_data, delimiter=',',header='timestamp,voltage,current,feedrate,energy', comments='')
-		
+        ####AUDIO SAVING
+        first_channel = np.concatenate(audio_recording)
+        first_channel_int16=(first_channel*32767).astype(np.int16)
+        with wave.open(layer_data_dir+'mic_recording.wav', 'wb') as wav_file:
+            # Set the WAV file parameters
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)  # 2 bytes per sample (16-bit)
+            wav_file.setframerate(44100)
+            # Write the audio data to the WAV file
+            wav_file.writeframes(first_channel_int16.tobytes())
 
-		####ROBOT JOINT SAVING
-		np.savetxt(layer_data_dir+'joint_recording.csv',robot_data,delimiter=',')
+        ####CURRENT SAVING
+        np.savetxt(layer_data_dir + 'current.csv',current_data, delimiter=',',header='timestamp,current', comments='')
 
-		###FLIR SAVING
-		flir_ts=np.array(flir_ts)
-		with open(layer_data_dir+'ir_recording.pickle','wb') as file:
-				pickle.dump(np.array(flir_logging),file)
-		np.savetxt(layer_data_dir + "ir_stamps.csv",flir_ts,delimiter=',')
-        
-		###XIR SAVING
+        ####FRONIUS SAVING
+        np.savetxt(layer_data_dir + 'welding.csv',welding_data, delimiter=',',header='timestamp,voltage,current,feedrate,energy', comments='')
+
+
+        ####ROBOT JOINT SAVING
+        np.savetxt(layer_data_dir+'joint_recording.csv',robot_data,delimiter=',')
+
+        ###FLIR SAVING
+        flir_ts=np.array(flir_ts)
+        with open(layer_data_dir+'ir_recording.pickle','wb') as file:
+            pickle.dump(np.array(flir_logging),file)
+        np.savetxt(layer_data_dir + "ir_stamps.csv",flir_ts,delimiter=',')
+
+        ###XIR SAVING
         if xir_ts is not None:
             xir_ts=np.array(xir_ts)
             with open(layer_data_dir+'ir_recording_2.pickle','wb') as file:
-                    pickle.dump(np.array(xir_logging),file)
+                pickle.dump(np.array(xir_logging),file)
             np.savetxt(layer_data_dir + "ir_stamps_2.csv",xir_ts,delimiter=',')
-		
-		return
+
+        return
