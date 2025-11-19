@@ -184,17 +184,16 @@ class WeldRRSensor(object):
 
         if self.start_weld_cb:
             # self.weld_timestamp.append(value.ts['microseconds'][0])
-            self.weld_timestamp.append(time.perf_counter())
+            self.weld_timestamp.append(time.time())
             self.weld_voltage.append(value.welding_voltage)
             self.weld_current.append(value.welding_current)
             self.weld_feedrate.append(value.wire_speed)
             self.weld_energy.append(value.welding_energy)
 
     def current_cb(self, sub, value, ts):
-
         if self.start_current_cb:
             # self.current_timestamp.append(ts.seconds+ts.nanoseconds*1e-9)
-            self.current_timestamp.append(time.perf_counter())
+            self.current_timestamp.append(time.time())
             self.current.append(value)
 
 
@@ -243,7 +242,7 @@ class WeldRRSensor(object):
                 # Convert the packet to an image and set the global variable
                 self.ir_recording.append(copy.deepcopy(display_mat))
                 # self.ir_timestamp.append(rr_img.image_info.data_header.ts['seconds']+rr_img.image_info.data_header.ts['nanoseconds']*1e-9)
-                self.ir_timestamp.append(time.perf_counter())
+                self.ir_timestamp.append(time.time())
 
     def save_ir_file(self,filedir):
 
@@ -262,7 +261,7 @@ class WeldRRSensor(object):
 
                 # save frame and timestamp
                 self.ir_recording_2.append(cv_img)
-                self.ir_timestamp_2.append(time.perf_counter())
+                self.ir_timestamp_2.append(time.time())
 
     def save_ir_file_2(self,filedir):
 
@@ -319,10 +318,22 @@ class WeldRRSensor(object):
             wav_file.writeframes(first_channel_int16.tobytes())
 
         ####CURRENT SAVING
-        np.savetxt(layer_data_dir + 'current.csv',current_data, delimiter=',',header='timestamp,current', comments='')
+        np.savetxt(
+            layer_data_dir + 'current.csv',
+            current_data,
+            delimiter=',',
+            header='timestamp,current',
+            comments=''
+        )
 
         ####FRONIUS SAVING
-        np.savetxt(layer_data_dir + 'welding.csv',welding_data, delimiter=',',header='timestamp,voltage,current,feedrate,energy', comments='')
+        np.savetxt(
+            layer_data_dir + 'welding.csv',
+            welding_data,
+            delimiter=',',
+            header='timestamp,voltage,current,feedrate,energy',
+            comments=''
+        )
 
 
         ####ROBOT JOINT SAVING
