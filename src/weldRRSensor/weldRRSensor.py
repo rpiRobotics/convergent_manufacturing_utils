@@ -7,6 +7,8 @@ from matplotlib import pyplot as plt
 class WeldRRSensor(object):
     def __init__(self,weld_service=None,\
             cam_service=None,\
+            flir_focus_pos = 1900,\
+            flir_object_distance = 0.4,\
             cam_service_2=None,\
             microphone_service=None,\
             current_service=None) -> None:
@@ -25,8 +27,8 @@ class WeldRRSensor(object):
         if cam_service:
             self.ir_image_consts = RRN.GetConstants('com.robotraconteur.image', self.cam_ser)
 
-            self.cam_ser.setf_param("focus_pos", RR.VarValue(int(1900),"int32"))
-            self.cam_ser.setf_param("object_distance", RR.VarValue(0.4,"double"))
+            self.cam_ser.setf_param("focus_pos", RR.VarValue(int(flir_focus_pos),"int32"))
+            self.cam_ser.setf_param("object_distance", RR.VarValue(flir_object_distance,"double"))
             self.cam_ser.setf_param("reflected_temperature", RR.VarValue(291.15,"double"))
             self.cam_ser.setf_param("atmospheric_temperature", RR.VarValue(293.15,"double"))
             self.cam_ser.setf_param("relative_humidity", RR.VarValue(50,"double"))
