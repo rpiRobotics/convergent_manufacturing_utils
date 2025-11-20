@@ -51,7 +51,13 @@ class WeldRRSensor(object):
         ## IR Camera Service 2 - Xiris
         self.cam_ser_2=cam_service_2
         if cam_service_2:
-            self.cam_ser_2.setf_param("camera_operating_mode", RR.VarValue("thermography","string"))
+            camera_consts = RRN.GetConstants("com.robotraconteur.imaging", self.cam_ser_2)
+            xiris_weldsdk_consts = RRN.GetConstants("experimental.xiris.weldsdk", self.cam_ser_2)
+
+            self.cam_ser_2.setf_param("camera_operating_mode", RR.VarValue("thermography", "string"))
+            self.cam_ser_2.trigger_mode = camera_consts["TriggerMode"]["external"]
+            self.cam_ser_2.trigger_polarity = xiris_weldsdk_consts["TriggerPolarities"]["positive"]
+            self.cam_ser_2.trigger_delay = 250
 
             self.img_util_2 = ImageUtil(client_obj=self.cam_ser_2)
             self.cam_pipe_2=self.cam_ser_2.frame_stream.Connect(-1)
@@ -62,7 +68,6 @@ class WeldRRSensor(object):
                 self.cam_ser_2.start_streaming()
             except:
                 print("error starting xiris stream")
-                pass
             self.clean_ir_record_2()
         ## microphone service
         self.mic_service=microphone_service
