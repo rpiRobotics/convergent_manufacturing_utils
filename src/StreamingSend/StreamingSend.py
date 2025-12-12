@@ -13,6 +13,7 @@ class StreamingSend(object):
 		self.RR_robot_state.WireValueChanged += self.robot_state_cb
 		self.streaming_rate=streaming_rate
 		self.command_seqno=0
+		self.rate_obj=None # initializing and will update later
 
 		###data logging
 		self.joint_logging_flag=False
@@ -83,12 +84,8 @@ class StreamingSend(object):
 		joint_cmd1.command = qd
 		
 		# ensure the command is sent at the correct streaming rate
-		# start time is the last time the command was sent
-		if start_time:
-			while time.time()-start_time < 1/self.streaming_rate*0.975:
-				time.sleep(0)	#sleep 0 for bg thread to run
-				continue
-		
+		self.rate_obj.Sleep()
+
 		# Send the joint command to the robot
 		self.RR_robot.position_command.PokeOutValue(joint_cmd1)
 		
@@ -99,7 +96,8 @@ class StreamingSend(object):
 		res, robot_state, _ = self.RR_robot_state.TryGetInValue()
 		q_cur=robot_state.joint_position
 		num_points_jogging=self.streaming_rate*np.max(np.abs(q_cur-qd))/point_distance
-
+        # initialize the rate object
+		self.init_motion()
 
 		for j in range(int(num_points_jogging)):
 			q_target = (q_cur*(num_points_jogging-j))/num_points_jogging+qd*j/num_points_jogging
@@ -109,6 +107,11 @@ class StreamingSend(object):
 		for i in range(20):
 			self.position_cmd(qd,time.time())
 
+        ### set wait object to none to throw error before initializing
+		self.rate_obj=None
+
+	def init_motion(self):
+		self.rate_obj = RRN.CreateRate(self.streaming_rate)
 
 	def traj_streaming(self,curve_js,ctrl_joints):
 		###curve_js: Nxn, 2d joint space trajectory
