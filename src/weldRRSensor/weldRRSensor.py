@@ -3,6 +3,7 @@ from RobotRaconteurCompanion.Util.ImageUtil import ImageUtil
 import time, copy, pickle, wave
 import numpy as np
 from matplotlib import pyplot as plt
+from pathlib import Path
 
 class WeldRRSensor(object):
     def __init__(self,weld_service=None,\
@@ -10,6 +11,7 @@ class WeldRRSensor(object):
             flir_focus_pos = 1900,\
             flir_object_distance = 0.4,\
             cam_service_2=None,\
+            fujicam_service=None,\
             microphone_service=None,\
             current_service=None) -> None:
 
@@ -71,6 +73,20 @@ class WeldRRSensor(object):
             except:
                 print("error starting xiris stream")
             self.clean_ir_record_2()
+        
+        ## Scanner service - FujiCam
+        self.fujicam_service=fujicam_service
+        if fujicam_service:
+            self.start_fujicam_cb=False
+            # get service wire connection
+            self.fujicam_obj = self.fujicam_service.GetDefaultClientWait(2)		#connect, timeout=2s
+            self.fujicam_scan_wire=self.fujicam_service.SubscribeWire("lineProfile")
+            self.fujicam_service.ClientConnectFailed += self.fujicam_connect_failed_handler
+            # add wire value changed event handler
+            self.fujicam_scan_wire.WireValueChanged += self.fujicam_value_changed_handler
+            # initialize recording storage
+            self.clean_fujicam_record()
+
         ## microphone service
         self.mic_service=microphone_service
         if microphone_service:
@@ -82,6 +98,7 @@ class WeldRRSensor(object):
             self.start_mic_cb=False
             self.mic_pipe.PacketReceivedEvent+=self.microphone_cb
 
+        ## current service (current clamp sensor)
         self.current_service=current_service
         if current_service:
             self.current_state_sub = self.current_service.SubscribeWire("current")
@@ -100,6 +117,9 @@ class WeldRRSensor(object):
         if self.cam_ser_2:
             self.clean_ir_record_2()
             self.start_ir_cb_2=True
+        if self.fujicam_service:
+            self.clean_fujicam_record()
+            self.start_fujicam_cb=True
         if self.mic_service:
             self.clean_mic_record()
             self.start_mic_cb=True
@@ -114,6 +134,8 @@ class WeldRRSensor(object):
             self.clean_ir_record()
         if self.cam_ser_2:
             self.clean_ir_record_2()
+        if self.fujicam_service:
+            self.clean_fujicam_record()
         if self.mic_service:
             self.clean_mic_record()
         if self.current_service:
@@ -124,6 +146,7 @@ class WeldRRSensor(object):
         self.start_weld_cb=False
         self.start_ir_cb=False
         self.start_ir_cb_2=False
+        self.start_fujicam_cb=False
         self.start_mic_cb=False
         self.start_current_cb=False
 
@@ -135,11 +158,12 @@ class WeldRRSensor(object):
             self.save_ir_file(filedir)
         if self.cam_ser_2:
             self.save_ir_file_2(filedir)
+        if self.fujicam_service:
+            self.save_fujicam_file(filedir)
         if self.mic_service:
             self.save_mic_file(filedir)
         if self.current_service:
             self.save_current_file(filedir)
-
 
     def test_all_sensors(self,t=3):
 
@@ -175,6 +199,7 @@ class WeldRRSensor(object):
             plt.title("Current data")
             plt.show()
 
+    ##### welding and current recording callbacks and functions #####
     def clean_weld_record(self):
 
         self.weld_timestamp=[]
@@ -203,7 +228,6 @@ class WeldRRSensor(object):
             self.current_timestamp.append(time.time())
             self.current.append(value)
 
-
     def save_weld_file(self,filedir):
         np.savetxt(filedir + 'welding.csv',
                    np.array([(np.array(self.weld_timestamp)), self.weld_voltage, self.weld_current, self.weld_feedrate, self.weld_energy]).T, delimiter=',',
@@ -213,6 +237,8 @@ class WeldRRSensor(object):
         np.savetxt(filedir + 'current.csv',
                    np.array([(np.array(self.current_timestamp)), self.current]).T, delimiter=',',
                    header='timestamp,current', comments='')
+
+    ##### FLIR and Xiris camera callbacks and functions #####
 
     def clean_ir_record(self):
         self.ir_timestamp=[]
@@ -275,6 +301,32 @@ class WeldRRSensor(object):
         with open(filedir+'ir_recording_2.pickle','wb') as file:
             pickle.dump(np.array(self.ir_recording_2),file)
         np.savetxt(filedir + "ir_stamps_2.csv",self.ir_timestamp_2,delimiter=',')
+
+    ##### FujiCam scanner callbacks and functions #####
+    
+    def fujicam_connect_failed_handler(self, s, client_id, url, err):
+        print ("Client connect failed: " + str(client_id.NodeID) + " url: " + str(url) + " error: " + str(err))
+    
+    def clean_fujicam_record(self):
+        self.fujicam_line_profiles=[]
+        self.fujicam_timestamps=[]
+    
+    def fujicam_value_changed_handler(self, con, wire_packet_value, ts):
+        if not self.start_fujicam_cb:
+            return
+
+        valid_indices=np.where(wire_packet_value[1].I_data>1)[0]
+        valid_indices=np.intersect1d(valid_indices,np.where(np.abs(wire_packet_value[1].Z_data)>10)[0])
+        line_profile=np.hstack((wire_packet_value[1].Y_data[valid_indices].reshape(-1,1),wire_packet_value[1].Z_data[valid_indices].reshape(-1,1)))
+        self.fujicam_line_profiles.append(line_profile)
+        self.fujicam_timestamps.append(time.time())
+    
+    def save_fujicam_file(self,filedir):
+        with open(filedir+'line_scan.pickle','wb') as file:
+            pickle.dump(self.fujicam_line_profiles,file)
+        np.savetxt(filedir + "line_scan_stamps.csv",self.fujicam_timestamps,delimiter=',')
+
+    ##### Microphone callbacks and functions #####
 
     def clean_mic_record(self):
 
