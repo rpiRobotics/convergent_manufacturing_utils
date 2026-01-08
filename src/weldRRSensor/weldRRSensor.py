@@ -315,9 +315,9 @@ class WeldRRSensor(object):
         if not self.start_fujicam_cb:
             return
 
-        valid_indices=np.where(wire_packet_value[1].I_data>1)[0]
-        valid_indices=np.intersect1d(valid_indices,np.where(np.abs(wire_packet_value[1].Z_data)>10)[0])
-        line_profile=np.hstack((wire_packet_value[1].Y_data[valid_indices].reshape(-1,1),wire_packet_value[1].Z_data[valid_indices].reshape(-1,1)))
+        valid_indices=np.where(wire_packet_value.I_data>1)[0]
+        valid_indices=np.intersect1d(valid_indices,np.where(np.abs(wire_packet_value.Z_data)>10)[0])
+        line_profile=np.hstack((wire_packet_value.Y_data[valid_indices].reshape(-1,1),wire_packet_value.Z_data[valid_indices].reshape(-1,1)))
         self.fujicam_line_profiles.append(line_profile)
         self.fujicam_timestamps.append(time.time())
     
