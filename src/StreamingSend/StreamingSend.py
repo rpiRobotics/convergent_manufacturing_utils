@@ -3,159 +3,158 @@ import time, copy
 from RobotRaconteur.Client import *
 
 class StreamingSend(object):
-	def __init__(self,RR_robot_sub,streaming_rate=125.,latency=0.1):
-		self.RR_robot_state = RR_robot_sub.SubscribeWire('robot_state')
-		self.RR_robot = RR_robot_sub.GetDefaultClientWait(1)
-		robot_const = RRN.GetConstants("com.robotraconteur.robotics.robot", self.RR_robot)
-		self.halt_mode = robot_const["RobotCommandMode"]["halt"]
-		self.position_mode = robot_const["RobotCommandMode"]["position_command"]
-		self.RobotJointCommand = RRN.GetStructureType("com.robotraconteur.robotics.robot.RobotJointCommand",self.RR_robot)
-		self.RR_robot_state.WireValueChanged += self.robot_state_cb
-		self.streaming_rate=streaming_rate
-		self.command_seqno=0
-		self.rate_obj=None # initializing and will update later
+    def __init__(self,RR_robot_sub,streaming_rate=125.,latency=0.1):
+        self.RR_robot_state = RR_robot_sub.SubscribeWire('robot_state')
+        self.RR_robot = RR_robot_sub.GetDefaultClientWait(1)
+        robot_const = RRN.GetConstants("com.robotraconteur.robotics.robot", self.RR_robot)
+        self.halt_mode = robot_const["RobotCommandMode"]["halt"]
+        self.position_mode = robot_const["RobotCommandMode"]["position_command"]
+        self.RobotJointCommand = RRN.GetStructureType(
+            "com.robotraconteur.robotics.robot.RobotJointCommand",
+            self.RR_robot
+        )
+        self.RR_robot_state.WireValueChanged += self.robot_state_cb
+        self.streaming_rate=streaming_rate
+        self.command_seqno=0
+        self.rate_obj=None # initializing and will update later
 
-		###data logging
-		self.joint_logging_flag=False
-		self.initialize_robot()
-	
-	def initialize_robot(self):
-		self.RR_robot.reset_errors()
-		self.RR_robot.enable()
-		self.RR_robot.command_mode = self.halt_mode
-		time.sleep(0.1)
-		self.RR_robot.command_mode = self.position_mode
-	
-	def deinitialize_robot(self):
-		self.RR_robot.command_mode = self.halt_mode
-		self.RR_robot.disable()
+        ###data logging
+        self.joint_logging_flag=False
+        self.initialize_robot()
 
-	def start_recording(self):
-		self.joint_recording=[]
-		self.joint_logging_flag=True
-	
-	def stop_recording(self):
-		self.joint_logging_flag=False
-		return np.array(self.joint_recording)
-	
-	def robot_state_cb(self, sub, value, ts):
-		self.q_cur=value.joint_position
-		if self.joint_logging_flag:
-			self.joint_recording.append(np.hstack(([time.time(),float(value.ts['microseconds'])/1e6],value.joint_position)))
+    def initialize_robot(self):
+        self.RR_robot.reset_errors()
+        self.RR_robot.enable()
+        self.RR_robot.command_mode = self.halt_mode
+        time.sleep(0.1)
+        self.RR_robot.command_mode = self.position_mode
 
-	# def get_breakpoints(self,lam,vd):
-	# 	###get breakpoints indices with dense lam and vd
-	# 	lam_diff=np.diff(lam)
-	# 	displacement=vd/self.streaming_rate
-	# 	breakpoints=[0]
-	# 	for i in range(1,len(lam)):
-	# 		if np.sum(lam_diff[breakpoints[-1]:i])>displacement:
-	# 			breakpoints.append(i)
-		
-	# 	return np.array(breakpoints)
+    def deinitialize_robot(self):
+        self.RR_robot.command_mode = self.halt_mode
+        self.RR_robot.disable()
 
-	def get_breakpoints(self, lam, vd):
-		lam_diff = np.diff(lam)
-		displacement = vd / self.streaming_rate
-		cumulative_lam_diff = np.cumsum(lam_diff)
+    def start_recording(self):
+        self.joint_recording=[]
+        self.joint_logging_flag=True
 
-		# The mask gives True wherever the cumulative sum exceeds a multiple of displacement
-		mask = np.diff(np.floor(cumulative_lam_diff / displacement))
+    def stop_recording(self):
+        self.joint_logging_flag=False
+        return np.array(self.joint_recording)
 
-		# Getting the indices where mask is True
-		breakpoints = np.insert(np.where(mask)[0] + 1, 0, 0)
+    def robot_state_cb(self, sub, value, ts):
+        self.q_cur=value.joint_position
+        if self.joint_logging_flag:
+            self.joint_recording.append(
+                np.hstack((
+                    [time.perf_counter(),float(value.ts['microseconds'])/1e6],
+                    value.joint_position))
+            )
 
-		return breakpoints
+    def get_breakpoints(self, lam, vd):
+        lam_diff = np.diff(lam)
+        displacement = vd / self.streaming_rate
+        cumulative_lam_diff = np.cumsum(lam_diff)
 
-	def position_cmd(self,qd,start_time=None):
-		###qd: joint position command
-		###start_time: loop start time to make sure 8ms streaming rate, if None, then no wait
-		robot_state = self.RR_robot_state.InValue
+        # The mask gives True wherever the cumulative sum exceeds a multiple of displacement
+        mask = np.diff(np.floor(cumulative_lam_diff / displacement))
 
-		# Increment command_seqno
-		self.command_seqno += 1
+        # Getting the indices where mask is True
+        breakpoints = np.insert(np.where(mask)[0] + 1, 0, 0)
 
-		# Create Fill the RobotJointCommand structure
-		joint_cmd1 = self.RobotJointCommand()
-		joint_cmd1.seqno = self.command_seqno # Strictly increasing command_seqno
-		joint_cmd1.state_seqno = robot_state.seqno # Send current robot_state.seqno as failsafe
-		
-		# Set the joint command
-		joint_cmd1.command = qd
-		
-		# ensure the command is sent at the correct streaming rate
-		self.rate_obj.Sleep()
+        return breakpoints
 
-		# Send the joint command to the robot
-		self.RR_robot.position_command.PokeOutValue(joint_cmd1)
-		
-		return 
-	
-	def jog2q(self,qd,point_distance=0.2):
-		###JOG TO starting pose first
-		res, robot_state, _ = self.RR_robot_state.TryGetInValue()
-		q_cur=robot_state.joint_position
-		num_points_jogging=self.streaming_rate*np.max(np.abs(q_cur-qd))/point_distance
+    def position_cmd(self,qd,start_time=None):
+        ###qd: joint position command
+        ###start_time: loop start time to make sure 8ms streaming rate, if None, then no wait
+        robot_state = self.RR_robot_state.InValue
+
+        # Increment command_seqno
+        self.command_seqno += 1
+
+        # Create Fill the RobotJointCommand structure
+        joint_cmd1 = self.RobotJointCommand()
+        joint_cmd1.seqno = self.command_seqno # Strictly increasing command_seqno
+        joint_cmd1.state_seqno = robot_state.seqno # Send current robot_state.seqno as failsafe
+
+        # Set the joint command
+        joint_cmd1.command = qd
+
+        # ensure the command is sent at the correct streaming rate
+        self.rate_obj.Sleep()
+
+        # Send the joint command to the robot
+        self.RR_robot.position_command.PokeOutValue(joint_cmd1)
+
+        return
+
+    def jog2q(self,qd,point_distance=0.2):
+        ###JOG TO starting pose first
+        res, robot_state, _ = self.RR_robot_state.TryGetInValue()
+        q_cur=robot_state.joint_position
+        num_points_jogging=self.streaming_rate*np.max(np.abs(q_cur-qd))/point_distance
         # initialize the rate object
-		self.init_motion()
+        self.init_motion()
 
-		for j in range(int(num_points_jogging)):
-			q_target = (q_cur*(num_points_jogging-j))/num_points_jogging+qd*j/num_points_jogging
-			self.position_cmd(q_target,time.time())
-			
-		###init point wait
-		for i in range(20):
-			self.position_cmd(qd,time.time())
+        for j in range(int(num_points_jogging)):
+            q_target = (q_cur*(num_points_jogging-j))/num_points_jogging+qd*j/num_points_jogging
+            self.position_cmd(q_target,time.perf_counter())
+
+        ###init point wait
+        for i in range(20):
+            self.position_cmd(qd,time.perf_counter())
 
         ### set wait object to none to throw error before initializing
-		self.rate_obj=None
+        self.rate_obj=None
 
-	def init_motion(self):
-		self.rate_obj = RRN.CreateRate(self.streaming_rate)
+    def init_motion(self):
+        self.rate_obj = RRN.CreateRate(self.streaming_rate)
 
-	def traj_streaming(self,curve_js,ctrl_joints):
-		###curve_js: Nxn, 2d joint space trajectory
-		###ctrl_joints: joints to be controlled, array of 0 and 1
+    def traj_streaming(self,curve_js,ctrl_joints):
+        ###curve_js: Nxn, 2d joint space trajectory
+        ###ctrl_joints: joints to be controlled, array of 0 and 1
 
-		joint_recording=[]
-		timestamp_recording=[]
-		res, robot_state, _ = self.RR_robot_state.TryGetInValue()
-		q_static=np.take(robot_state.joint_position,(~ctrl_joints.astype(bool)).astype(int).nonzero()[0])
-		for i in range(len(curve_js)):
-			now=time.time()
-			curve_js_cmd=np.zeros(len(robot_state.joint_position))
-			np.put(curve_js_cmd,(~ctrl_joints.astype(bool)).astype(int).nonzero()[0],q_static)
-			curve_js_cmd[ctrl_joints.nonzero()[0]]=curve_js[i]
-			ts,js=self.position_cmd(curve_js_cmd,time.time())
-			timestamp_recording.append(ts)
-			try:
-				joint_recording.append(js[ctrl_joints.nonzero()[0]])
-			except:
-				print(js,ts)
-		#######################Wait for the robot to reach the last point with joint FEEDBACK#########################
-		q_prev=joint_recording[-1]
-		ts_prev=timestamp_recording[-1]
-		counts=0
-		while True:
-			ts=float(self.RR_robot_state.InValue.ts['microseconds'])/1e6
-			js=self.RR_robot_state.InValue.joint_position[ctrl_joints.nonzero()[0]]
-			#only updates when the timestamp changes
-			if ts_prev!=ts:
-				if np.linalg.norm(js-q_prev)<0.0001:#if not moving
-					counts+=1
-				else:
-					counts=0
-				ts_prev=copy.deepcopy(ts)
-				qs_prev=copy.deepcopy(js)
-				joint_recording.append(js)
-				timestamp_recording.append(ts)
-				if counts>8:    ###in case getting static stale data 
-					break
-			q_prev=copy.deepcopy(js)
+        joint_recording=[]
+        timestamp_recording=[]
+        res, robot_state, _ = self.RR_robot_state.TryGetInValue()
+        q_static=np.take(
+            robot_state.joint_position,
+            (~ctrl_joints.astype(bool)).astype(int).nonzero()[0]
+        )
+        for i,_ in enumerate(curve_js):
+            now=time.perf_counter()
+            curve_js_cmd=np.zeros(len(robot_state.joint_position))
+            np.put(curve_js_cmd,(~ctrl_joints.astype(bool)).astype(int).nonzero()[0],q_static)
+            curve_js_cmd[ctrl_joints.nonzero()[0]]=curve_js[i]
+            ts,js=self.position_cmd(curve_js_cmd,time.perf_counter())
+            timestamp_recording.append(ts)
+            try:
+                joint_recording.append(js[ctrl_joints.nonzero()[0]])
+            except:
+                print(js,ts)
+        #######################Wait for the robot to reach the last point with joint FEEDBACK#########################
+        q_prev=joint_recording[-1]
+        ts_prev=timestamp_recording[-1]
+        counts=0
+        while True:
+            ts=float(self.RR_robot_state.InValue.ts['microseconds'])/1e6
+            js=self.RR_robot_state.InValue.joint_position[ctrl_joints.nonzero()[0]]
+            #only updates when the timestamp changes
+            if ts_prev!=ts:
+                if np.linalg.norm(js-q_prev)<0.0001:#if not moving
+                    counts+=1
+                else:
+                    counts=0
+                ts_prev=copy.deepcopy(ts)
+                qs_prev=copy.deepcopy(js)
+                joint_recording.append(js)
+                timestamp_recording.append(ts)
+                if counts>8:    ###in case getting static stale data 
+                    break
+            q_prev=copy.deepcopy(js)
 
-		timestamp_recording=np.array(timestamp_recording)
-		timestamp_recording-=timestamp_recording[0]
-		return timestamp_recording, np.array(joint_recording)
+        timestamp_recording=np.array(timestamp_recording)
+        timestamp_recording-=timestamp_recording[0]
+        return timestamp_recording, np.array(joint_recording)
 
 	# def traj_tracking_js(self,curve_js,ctrl_joints):
 	# 	###joint space trajectory tracking with exact number of points at streaming_rate
@@ -168,7 +167,7 @@ class StreamingSend(object):
 	# 	q_cur=np.take(robot_state.joint_position,ctrl_joints.nonzero()[0])
 	# 	q_static=np.take(robot_state.joint_position,(~ctrl_joints.astype(bool)).astype(int).nonzero()[0])
 	# 	for i in range(len(curve_js)):
-	# 		now=time.time()
+	# 		now=time.perf_counter()
 	# 		curve_js_cmd=np.zeros(len(robot_state.joint_position))
 	# 		np.put(curve_js_cmd,(~ctrl_joints.astype(bool)).astype(int).nonzero()[0],q_static)
 	# 		if len(joint_recording)==0:
@@ -197,9 +196,9 @@ class StreamingSend(object):
 	# 	res, robot_state, _ = self.RR_robot_state.TryGetInValue()
 	# 	q_cur=np.take(robot_state.joint_position,ctrl_joints.nonzero()[0])
 	# 	q_static=np.take(robot_state.joint_position,(~ctrl_joints.astype(bool)).astype(int).nonzero()[0])
-	# 	traj_start_time=time.time()
+	# 	traj_start_time=time.perf_counter()
 	# 	while True:
-	# 		now=time.time()
+	# 		now=time.perf_counter()
 
 	# 		lam_now=(now-traj_start_time)*vd
 	# 		lam_idx=np.searchsorted(lam,lam_now)-1
@@ -228,17 +227,25 @@ class StreamingSend(object):
 	# 	timestamp_recording=np.array(timestamp_recording)
 	# 	timestamp_recording-=timestamp_recording[0]
 	# 	return timestamp_recording, np.array(joint_recording)
-	
 
-	def add_extension_egm_js(self,lower_limit,upper_limit,curve_cmd_js,extension_start=50,extension_end=50):
-		#################add extension#########################
-		init_extension_js=np.linspace(curve_cmd_js[0]-extension_start*(curve_cmd_js[1]-curve_cmd_js[0]),curve_cmd_js[0],num=extension_start,endpoint=False)
-		end_extension_js=np.linspace(curve_cmd_js[-1],curve_cmd_js[-1]+extension_end*(curve_cmd_js[-1]-curve_cmd_js[-2]),num=extension_end+1)[1:]
+    def add_extension_egm_js(self,lower_limit,upper_limit,curve_cmd_js,extension_start=50,extension_end=50):
+        #################add extension#########################
+        init_extension_js=np.linspace(
+            curve_cmd_js[0]-extension_start*(curve_cmd_js[1]-curve_cmd_js[0]),
+            curve_cmd_js[0],
+            num=extension_start,
+            endpoint=False
+        )
+        end_extension_js=np.linspace(
+            curve_cmd_js[-1],
+            curve_cmd_js[-1]+extension_end*(curve_cmd_js[-1]-curve_cmd_js[-2]),
+            num=extension_end+1
+        )[1:]
 
-		###cap extension within joint limits
-		for i in range(len(curve_cmd_js[0])):
-			init_extension_js[:,i]=np.clip(init_extension_js[:,i],lower_limit[i]+0.01,upper_limit[i]-0.01)
-			end_extension_js[:,i]=np.clip(end_extension_js[:,i],lower_limit[i]+0.01,upper_limit[i]-0.01)
+        ###cap extension within joint limits
+        for i in range(len(curve_cmd_js[0])):
+            init_extension_js[:,i]=np.clip(init_extension_js[:,i],lower_limit[i]+0.01,upper_limit[i]-0.01)
+            end_extension_js[:,i]=np.clip(end_extension_js[:,i],lower_limit[i]+0.01,upper_limit[i]-0.01)
 
-		curve_cmd_js_ext=np.vstack((init_extension_js,curve_cmd_js,end_extension_js))
-		return curve_cmd_js_ext
+        curve_cmd_js_ext=np.vstack((init_extension_js,curve_cmd_js,end_extension_js))
+        return curve_cmd_js_ext

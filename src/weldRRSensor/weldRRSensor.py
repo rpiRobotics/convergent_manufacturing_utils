@@ -216,7 +216,7 @@ class WeldRRSensor(object):
 
         if self.start_weld_cb:
             # self.weld_timestamp.append(value.ts['microseconds'][0])
-            self.weld_timestamp.append(time.time())
+            self.weld_timestamp.append(time.perf_counter())
             self.weld_voltage.append(value.welding_voltage)
             self.weld_current.append(value.welding_current)
             self.weld_feedrate.append(value.wire_speed)
@@ -225,7 +225,7 @@ class WeldRRSensor(object):
     def current_cb(self, sub, value, ts):
         if self.start_current_cb:
             # self.current_timestamp.append(ts.seconds+ts.nanoseconds*1e-9)
-            self.current_timestamp.append(time.time())
+            self.current_timestamp.append(time.perf_counter())
             self.current.append(value)
 
     def save_weld_file(self,filedir):
@@ -275,7 +275,7 @@ class WeldRRSensor(object):
                 # Convert the packet to an image and set the global variable
                 self.ir_recording.append(copy.deepcopy(display_mat))
                 # self.ir_timestamp.append(rr_img.image_info.data_header.ts['seconds']+rr_img.image_info.data_header.ts['nanoseconds']*1e-9)
-                self.ir_timestamp.append(time.time())
+                self.ir_timestamp.append(time.perf_counter())
 
     def save_ir_file(self,filedir):
 
@@ -294,7 +294,7 @@ class WeldRRSensor(object):
 
                 # save frame and timestamp
                 self.ir_recording_2.append(cv_img)
-                self.ir_timestamp_2.append(time.time())
+                self.ir_timestamp_2.append(time.perf_counter())
 
     def save_ir_file_2(self,filedir):
 
@@ -319,7 +319,7 @@ class WeldRRSensor(object):
         valid_indices=np.intersect1d(valid_indices,np.where(np.abs(wire_packet_value.Z_data)>10)[0])
         line_profile=np.hstack((wire_packet_value.Y_data[valid_indices].reshape(-1,1),wire_packet_value.Z_data[valid_indices].reshape(-1,1)))
         self.fujicam_line_profiles.append(line_profile)
-        self.fujicam_timestamps.append(time.time())
+        self.fujicam_timestamps.append(time.perf_counter())
     
     def save_fujicam_file(self,filedir):
         with open(filedir+'line_scan.pickle','wb') as file:
