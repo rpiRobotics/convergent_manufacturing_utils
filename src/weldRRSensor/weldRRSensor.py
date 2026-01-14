@@ -107,9 +107,7 @@ class WeldRRSensor(object):
             self.current_state_sub.WireValueChanged += self.current_cb
 
         ## calculate time offset
-        # TODO: finish time calibration
-        # self.t_offset = time.time()-time.perf_counter()
-        self.t_offset = 0.0
+        self.t_offset = RRN.NowNodeTime().timestamp()-time.perf_counter()
 
     def start_all_sensors(self):
 

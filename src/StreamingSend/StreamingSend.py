@@ -3,7 +3,12 @@ import time, copy
 from RobotRaconteur.Client import *
 
 class StreamingSend(object):
-    def __init__(self,RR_robot_sub,streaming_rate=125.,latency=0.1):
+    def __init__(self,RR_robot_sub,streaming_rate=125.,latency=0.1, max_delay=0.5):
+        '''
+        streaming_rate: the rate which motion is streamed
+        latency: (not used) the delay between when the command is sent and the robot moves.
+        max_delay: The maximum tolerable delay between rate commands without throwing an error.
+        '''
         self.RR_robot_state = RR_robot_sub.SubscribeWire('robot_state')
         self.RR_robot = RR_robot_sub.GetDefaultClientWait(1)
         robot_const = RRN.GetConstants("com.robotraconteur.robotics.robot", self.RR_robot)
@@ -24,8 +29,11 @@ class StreamingSend(object):
 
         # calculate time offset
         # commenting to deactivate for now
-        # self.t_offset = time.time()-time.perf_counter()
-        self.t_offset = 0.0
+        self.t_offset = RRN.NowNodeTime().timestamp()-time.perf_counter()
+
+        # intialized here, but not necessary
+        self.prev_time = time.perf_counter()
+        self.max_delay = max_delay
 
 
     def initialize_robot(self):
@@ -70,6 +78,8 @@ class StreamingSend(object):
         return breakpoints
 
     def position_cmd(self,qd,start_time=None):
+        if (time.perf_counter()-self.prev_time)>self.max_delay:
+            raise Exception("Maximum allowed delay time reached. \n Check to see if motion was initialized/de-initialized.")
         ###qd: joint position command
         ###start_time: loop start time to make sure 8ms streaming rate, if None, then no wait
         robot_state = self.RR_robot_state.InValue
@@ -90,6 +100,7 @@ class StreamingSend(object):
 
         # Send the joint command to the robot
         self.RR_robot.position_command.PokeOutValue(joint_cmd1)
+        self.prev_time = time.perf_counter()
 
         return
 
@@ -110,10 +121,14 @@ class StreamingSend(object):
             self.position_cmd(qd,time.perf_counter())
 
         ### set wait object to none to throw error before initializing
-        self.rate_obj=None
+        self.deinit_motion()
 
     def init_motion(self):
         self.rate_obj = RRN.CreateRate(self.streaming_rate)
+        self.prev_time = time.perf_counter()
+
+    def deinit_motion(self):
+        self.rate_obj = None
 
     def traj_streaming(self,curve_js,ctrl_joints):
         ###curve_js: Nxn, 2d joint space trajectory
