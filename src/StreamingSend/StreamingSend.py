@@ -22,6 +22,12 @@ class StreamingSend(object):
         self.joint_logging_flag=False
         self.initialize_robot()
 
+        # calculate time offset
+        # commenting to deactivate for now
+        # self.t_offset = time.time()-time.perf_counter()
+        self.t_offset = 0.0
+
+
     def initialize_robot(self):
         self.RR_robot.reset_errors()
         self.RR_robot.enable()
@@ -46,7 +52,7 @@ class StreamingSend(object):
         if self.joint_logging_flag:
             self.joint_recording.append(
                 np.hstack((
-                    [time.perf_counter(),float(value.ts['microseconds'])/1e6],
+                    [time.perf_counter()+self.t_offset,float(value.ts['microseconds'])/1e6],
                     value.joint_position))
             )
 
