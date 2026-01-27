@@ -4,13 +4,14 @@ import time, copy, pickle, wave
 import numpy as np
 from matplotlib import pyplot as plt
 from pathlib import Path
+import h5py
 
 class WeldRRSensor(object):
     def __init__(self,weld_service=None,\
             cam_service=None,\
             flir_focus_pos = 1900,\
             flir_object_distance = 0.4,\
-            cam_service_2=None,\
+            cam_2_service=None,\
             fujicam_service=None,\
             microphone_service=None,\
             current_service=None) -> None:
@@ -46,6 +47,13 @@ class WeldRRSensor(object):
             #Set the callback for new pipe packets
             self.start_ir_cb = False
             self.cam_pipe.PacketReceivedEvent+=self.ir_cb
+
+            # set the hdf5 save params
+            self.ir_w = self.ir_image_consts["ImageInfo"]["width"]
+            self.ir_h = self.ir_image_consts["ImageInfo"]["height"]
+            self.ir_chunk_shape = (1, self.ir_h, self.ir_w)
+            self.ir_compression_alg = 'gzip'
+
             try:
                 self.cam_ser.start_streaming()
             except:
@@ -53,26 +61,33 @@ class WeldRRSensor(object):
             self.clean_ir_record()
 
         ## IR Camera Service 2 - Xiris
-        self.cam_ser_2=cam_service_2
-        if cam_service_2:
-            camera_consts = RRN.GetConstants("com.robotraconteur.imaging", self.cam_ser_2)
-            xiris_weldsdk_consts = RRN.GetConstants("experimental.xiris.weldsdk", self.cam_ser_2)
+        self.cam_2_ser=cam_2_service
+        if cam_2_service:
+            self.ir_2_image_consts = RRN.GetConstants("com.robotraconteur.imaging", self.cam_2_ser)
+            self.xiris_weldsdk_consts = RRN.GetConstants("experimental.xiris.weldsdk", self.cam_2_ser)
 
-            self.cam_ser_2.setf_param("camera_operating_mode", RR.VarValue("thermography", "string"))
-            self.cam_ser_2.trigger_mode = camera_consts["TriggerMode"]["external"]
-            self.cam_ser_2.trigger_polarity = xiris_weldsdk_consts["TriggerPolarities"]["positive"]
-            self.cam_ser_2.trigger_delay = 250
+            self.cam_2_ser.setf_param("camera_operating_mode", RR.VarValue("thermography", "string"))
+            self.cam_2_ser.trigger_mode = camera_consts["TriggerMode"]["external"]
+            self.cam_2_ser.trigger_polarity = xiris_weldsdk_consts["TriggerPolarities"]["positive"]
+            self.cam_2_ser.trigger_delay = 250
 
-            self.img_util_2 = ImageUtil(client_obj=self.cam_ser_2)
-            self.cam_pipe_2=self.cam_ser_2.frame_stream.Connect(-1)
+            self.img_2_util = ImageUtil(client_obj=self.cam_2_ser)
+            self.cam_pipe_2=self.cam_2_ser.frame_stream.Connect(-1)
             #Set the callback for new pipe packets
-            self.start_ir_cb_2 = False
-            self.cam_pipe_2.PacketReceivedEvent+=self.ir_cb_2
+            self.start_ir_2_cb = False
+            self.cam_pipe_2.PacketReceivedEvent+=self.ir_2_cb
+            
+            # set the hdf5 save params
+            self.ir_2_w = self.ir_2_image_consts["ImageInfo"]["width"]
+            self.ir_2_h = self.ir_2_image_consts["ImageInfo"]["height"]
+            self.ir_2_chunk_shape = (1, self.ir_2_h, self.ir_2_w)
+            self.ir_2_compression_alg = 'gzip'
+
             try:
-                self.cam_ser_2.start_streaming()
+                self.cam_2_ser.start_streaming()
             except:
                 print("error starting xiris stream")
-            self.clean_ir_record_2()
+            self.clean_ir_2_record()
         
         ## Scanner service - FujiCam
         self.fujicam_service=fujicam_service
@@ -84,6 +99,10 @@ class WeldRRSensor(object):
             self.fujicam_service.ClientConnectFailed += self.fujicam_connect_failed_handler
             # add wire value changed event handler
             self.fujicam_scan_wire.WireValueChanged += self.fujicam_value_changed_handler
+
+            # Compression for hdf5
+            self.fujicam_compression_alg='gzip'
+
             # initialize recording storage
             self.clean_fujicam_record()
 
@@ -117,9 +136,9 @@ class WeldRRSensor(object):
         if self.cam_ser:
             self.clean_ir_record()
             self.start_ir_cb=True
-        if self.cam_ser_2:
-            self.clean_ir_record_2()
-            self.start_ir_cb_2=True
+        if self.cam_2_ser:
+            self.clean_ir_2_record()
+            self.start_ir_2_cb=True
         if self.fujicam_service:
             self.clean_fujicam_record()
             self.start_fujicam_cb=True
@@ -135,8 +154,8 @@ class WeldRRSensor(object):
             self.clean_weld_record()
         if self.cam_ser:
             self.clean_ir_record()
-        if self.cam_ser_2:
-            self.clean_ir_record_2()
+        if self.cam_2_ser:
+            self.clean_ir_2_record()
         if self.fujicam_service:
             self.clean_fujicam_record()
         if self.mic_service:
@@ -148,7 +167,7 @@ class WeldRRSensor(object):
 
         self.start_weld_cb=False
         self.start_ir_cb=False
-        self.start_ir_cb_2=False
+        self.start_ir_2_cb=False
         self.start_fujicam_cb=False
         self.start_mic_cb=False
         self.start_current_cb=False
@@ -159,8 +178,8 @@ class WeldRRSensor(object):
             self.save_weld_file(filedir)
         if self.cam_ser:
             self.save_ir_file(filedir)
-        if self.cam_ser_2:
-            self.save_ir_file_2(filedir)
+        if self.cam_2_ser:
+            self.save_ir_2_file(filedir)
         if self.fujicam_service:
             self.save_fujicam_file(filedir)
         if self.mic_service:
@@ -182,10 +201,10 @@ class WeldRRSensor(object):
                 plt.colorbar(format='%.2f')
                 plt.pause(sleep_t)
                 plt.clf()
-        if self.cam_ser_2:
+        if self.cam_2_ser:
             fig = plt.figure(1)
-            sleep_t=float(3./len(self.ir_recording_2))
-            for r in self.ir_recording_2:
+            sleep_t=float(3./len(self.ir_2_recording))
+            for r in self.ir_2_recording:
                 plt.imshow(r, cmap='inferno', aspect='auto')
                 plt.colorbar(format='%.2f')
                 plt.pause(sleep_t)
@@ -247,9 +266,9 @@ class WeldRRSensor(object):
         self.ir_timestamp=[]
         self.ir_recording=[]
 
-    def clean_ir_record_2(self):
-        self.ir_timestamp_2=[]
-        self.ir_recording_2=[]
+    def clean_ir_2_record(self):
+        self.ir_2_timestamp=[]
+        self.ir_2_recording=[]
 
 
     def ir_cb(self,pipe_ep):
@@ -281,30 +300,45 @@ class WeldRRSensor(object):
                 self.ir_timestamp.append(time.perf_counter()+self.t_offset)
 
     def save_ir_file(self,filedir):
+        with h5py.File(f"{filedir}ir_recording.h5", 'w') as file:
+            file.create_dataset(
+                'video_frames',
+                data=np.array(self.ir_recording),
+                chunks=self.ir_chunk_shape,
+                compression=self.ir_compression_alg
+            )
+            file.create_dataset(
+                'timestamps',
+                data=self.ir_timestamp,
+                compression=self.ir_compression_alg
+            )
 
-        with open(filedir+'ir_recording.pickle','wb') as file:
-            pickle.dump(np.array(self.ir_recording),file)
-        np.savetxt(filedir + "ir_stamps.csv",self.ir_timestamp,delimiter=',')
-
-    def ir_cb_2(self,pipe_ep):
+    def ir_2_cb(self,pipe_ep):
         # Loop to get the newest frame
         while (pipe_ep.Available > 0):
             # Receive the packet
             rr_img = pipe_ep.ReceivePacket()
-            if self.start_ir_cb_2:
+            if self.start_ir_2_cb:
                 # convert the packet to an image
-                cv_img=self.img_util_2.image_to_array(rr_img)
+                cv_img=self.img_2_util.image_to_array(rr_img)
 
                 # save frame and timestamp
-                self.ir_recording_2.append(cv_img)
-                self.ir_timestamp_2.append(time.perf_counter()+self.t_offset)
+                self.ir_2_recording.append(cv_img)
+                self.ir_2_timestamp.append(time.perf_counter()+self.t_offset)
 
-    def save_ir_file_2(self,filedir):
-
-        with open(filedir+'ir_recording_2.pickle','wb') as file:
-            pickle.dump(np.array(self.ir_recording_2),file)
-        np.savetxt(filedir + "ir_stamps_2.csv",self.ir_timestamp_2,delimiter=',')
-
+    def save_ir_2_file(self,filedir):
+        with h5py.File(f"{filedir}ir_2_recording.h5", 'w') as file:
+            file.create_dataset(
+                'video_frames',
+                data=np.array(self.ir_2_recording),
+                chunks=self.ir_2_chunk_shape,
+                compression=self.ir_2_compression_alg
+            )
+            file.create_dataset(
+                'timestamps',
+                data=self.ir_2_timestamp,
+                compression=self.ir_2_compression_alg
+            )
     ##### FujiCam scanner callbacks and functions #####
     
     def fujicam_connect_failed_handler(self, s, client_id, url, err):
@@ -325,9 +359,17 @@ class WeldRRSensor(object):
         self.fujicam_timestamps.append(time.perf_counter()+self.t_offset)
     
     def save_fujicam_file(self,filedir):
-        with open(filedir+'line_scan.pickle','wb') as file:
-            pickle.dump(self.fujicam_line_profiles,file)
-        np.savetxt(filedir + "line_scan_stamps.csv",self.fujicam_timestamps,delimiter=',')
+        with h5py.File(f"{filedir}line_scan.h5", 'w') as file:
+            file.create_dataset(
+                'line_scans',
+                data=np.array(self.fujicam_line_profiles),
+                compression=self.fujicam_compression_alg
+            )
+            file.create_dataset(
+                'timestamps',
+                data=self.fujicam_timestamps,
+                compression=self.fujicam_compression_alg
+            )
 
     ##### Microphone callbacks and functions #####
 
@@ -410,7 +452,7 @@ class WeldRRSensor(object):
         ###XIR SAVING
         if xir_ts is not None:
             xir_ts=np.array(xir_ts)
-            with open(layer_data_dir+'ir_recording_2.pickle','wb') as file:
+            with open(layer_data_dir+'ir_2_recording.pickle','wb') as file:
                 pickle.dump(np.array(xir_logging),file)
             np.savetxt(layer_data_dir + "ir_stamps_2.csv",xir_ts,delimiter=',')
 
