@@ -49,8 +49,9 @@ class WeldRRSensor(object):
             self.cam_pipe.PacketReceivedEvent+=self.ir_cb
 
             # set the hdf5 save params
-            self.ir_w = self.ir_image_consts["ImageInfo"]["width"]
-            self.ir_h = self.ir_image_consts["ImageInfo"]["height"]
+            rr_img = cam_service.capture_frame()
+            self.ir_w = rr_img.image_info.width
+            self.ir_h = rr_img.image_info.height
             self.ir_chunk_shape = (1, self.ir_h, self.ir_w)
             self.ir_compression_alg = 'gzip'
 
@@ -58,6 +59,7 @@ class WeldRRSensor(object):
                 self.cam_ser.start_streaming()
             except:
                 pass
+
             self.clean_ir_record()
 
         ## IR Camera Service 2 - Xiris
@@ -67,8 +69,8 @@ class WeldRRSensor(object):
             self.xiris_weldsdk_consts = RRN.GetConstants("experimental.xiris.weldsdk", self.cam_2_ser)
 
             self.cam_2_ser.setf_param("camera_operating_mode", RR.VarValue("thermography", "string"))
-            self.cam_2_ser.trigger_mode = camera_consts["TriggerMode"]["external"]
-            self.cam_2_ser.trigger_polarity = xiris_weldsdk_consts["TriggerPolarities"]["positive"]
+            self.cam_2_ser.trigger_mode = self.ir_2_image_consts["TriggerMode"]["external"]
+            self.cam_2_ser.trigger_polarity = self.xiris_weldsdk_consts["TriggerPolarities"]["positive"]
             self.cam_2_ser.trigger_delay = 250
 
             self.img_2_util = ImageUtil(client_obj=self.cam_2_ser)
@@ -78,8 +80,9 @@ class WeldRRSensor(object):
             self.cam_pipe_2.PacketReceivedEvent+=self.ir_2_cb
             
             # set the hdf5 save params
-            self.ir_2_w = self.ir_2_image_consts["ImageInfo"]["width"]
-            self.ir_2_h = self.ir_2_image_consts["ImageInfo"]["height"]
+            rr_img = cam_2_service.capture_frame()
+            self.ir_2_w = rr_img.image_info.width
+            self.ir_2_h = rr_img.image_info.height
             self.ir_2_chunk_shape = (1, self.ir_2_h, self.ir_2_w)
             self.ir_2_compression_alg = 'gzip'
 
@@ -340,14 +343,14 @@ class WeldRRSensor(object):
                 compression=self.ir_2_compression_alg
             )
     ##### FujiCam scanner callbacks and functions #####
-    
+
     def fujicam_connect_failed_handler(self, s, client_id, url, err):
         print ("Client connect failed: " + str(client_id.NodeID) + " url: " + str(url) + " error: " + str(err))
-    
+
     def clean_fujicam_record(self):
         self.fujicam_line_profiles=[]
         self.fujicam_timestamps=[]
-    
+
     def fujicam_value_changed_handler(self, con, wire_packet_value, ts):
         if not self.start_fujicam_cb:
             return
@@ -357,19 +360,22 @@ class WeldRRSensor(object):
         line_profile=np.hstack((wire_packet_value.Y_data[valid_indices].reshape(-1,1),wire_packet_value.Z_data[valid_indices].reshape(-1,1)))
         self.fujicam_line_profiles.append(line_profile)
         self.fujicam_timestamps.append(time.perf_counter()+self.t_offset)
-    
+
     def save_fujicam_file(self,filedir):
-        with h5py.File(f"{filedir}line_scan.h5", 'w') as file:
-            file.create_dataset(
-                'line_scans',
-                data=np.array(self.fujicam_line_profiles),
-                compression=self.fujicam_compression_alg
-            )
-            file.create_dataset(
-                'timestamps',
-                data=self.fujicam_timestamps,
-                compression=self.fujicam_compression_alg
-            )
+        with open(filedir+'line_scan.pickle','wb') as file:
+            pickle.dump(self.fujicam_line_profiles,file)
+        np.savetxt(filedir + "line_scan_stamps.csv",self.fujicam_timestamps,delimiter=',')
+        # with h5py.File(f"{filedir}line_scan.h5", 'w') as file:
+        #     file.create_dataset(
+        #         'line_scans',
+        #         data=np.array(self.fujicam_line_profiles),
+        #         compression=self.fujicam_compression_alg
+        #     )
+        #     file.create_dataset(
+        #         'timestamps',
+        #         data=self.fujicam_timestamps,
+        #         compression=self.fujicam_compression_alg
+        #     )
 
     ##### Microphone callbacks and functions #####
 
