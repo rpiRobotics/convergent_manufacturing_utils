@@ -5,6 +5,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from pathlib import Path
 import h5py
+import sys
 
 class WeldRRSensor(object):
     def __init__(self,weld_service=None,\
@@ -73,8 +74,27 @@ class WeldRRSensor(object):
             self.cam_2_ser.trigger_polarity = self.xiris_weldsdk_consts["TriggerPolarities"]["positive"]
             self.cam_2_ser.trigger_delay = 250
 
+            # set emissivity map
+            em_val = 1.0
+            em_map = np.ones([512, 640], dtype=np.float64)
+            em_map = em_val*em_map
+            image_type = RRN.GetStructureType("com.robotraconteur.image.Image", self.cam_2_ser)
+            image_info_type = RRN.GetStructureType("com.robotraconteur.image.ImageInfo", self.cam_2_ser)
+            image_const = RRN.GetConstants("com.robotraconteur.image", self.cam_2_ser)
+
+            rr_image = image_type()
+            rr_image_info = image_info_type()
+            rr_image.image_info = rr_image_info
+            rr_image_info.width = 640
+            rr_image_info.height = 512
+            rr_image_info.encoding = image_const["ImageEncoding"]["mono_f64"]
+            rr_image.data = em_map.flatten(order="C").view(dtype=np.uint8).copy()
+            self.cam_2_ser.setf_emissivity_map(rr_image)
+
             self.img_2_util = ImageUtil(client_obj=self.cam_2_ser)
             self.cam_pipe_2=self.cam_2_ser.frame_stream.Connect(-1)
+
+
             #Set the callback for new pipe packets
             self.start_ir_2_cb = False
             self.cam_pipe_2.PacketReceivedEvent+=self.ir_2_cb
@@ -355,27 +375,44 @@ class WeldRRSensor(object):
         if not self.start_fujicam_cb:
             return
 
-        valid_indices=np.where(wire_packet_value.I_data>1)[0]
-        valid_indices=np.intersect1d(valid_indices,np.where(np.abs(wire_packet_value.Z_data)>10)[0])
-        line_profile=np.hstack((wire_packet_value.Y_data[valid_indices].reshape(-1,1),wire_packet_value.Z_data[valid_indices].reshape(-1,1)))
+        # valid_indices=np.where(wire_packet_value.I_data>1)[0]
+        # valid_indices=np.intersect1d(valid_indices,np.where(np.abs(wire_packet_value.Z_data)>10)[0])
+        # print(valid_indices)
+        # line_profile=np.hstack((wire_packet_value.Y_data[valid_indices].reshape(-1,1),wire_packet_value.Z_data[valid_indices].reshape(-1,1)))
+
+        # mask = np.ones_like(wire_packet_value.I_data, dtype=bool)
+        # mask[valid_indices]=False
+        # y_data[mask]=np.nan
+        # z_data[mask]=np.nan
+        # line_profile=np.hstack((y_data.reshape(-1,1),z_data.reshape(-1,1)))
+
+        invalid_indices = np.concatenate((np.where(wire_packet_value.I_data<=1)[0], np.where(np.abs(wire_packet_value.Z_data)<10)[0]))
+        y_data = wire_packet_value.Y_data
+        z_data = wire_packet_value.Z_data
+        y_data[invalid_indices]=np.nan
+        z_data[invalid_indices]=np.nan
+        line_profile=np.hstack((y_data.reshape(-1,1),z_data.reshape(-1,1)))
+
         self.fujicam_line_profiles.append(line_profile)
         self.fujicam_timestamps.append(time.perf_counter()+self.t_offset)
 
     def save_fujicam_file(self,filedir):
-        with open(filedir+'line_scan.pickle','wb') as file:
-            pickle.dump(self.fujicam_line_profiles,file)
-        np.savetxt(filedir + "line_scan_stamps.csv",self.fujicam_timestamps,delimiter=',')
-        # with h5py.File(f"{filedir}line_scan.h5", 'w') as file:
-        #     file.create_dataset(
-        #         'line_scans',
-        #         data=np.array(self.fujicam_line_profiles),
-        #         compression=self.fujicam_compression_alg
-        #     )
-        #     file.create_dataset(
-        #         'timestamps',
-        #         data=self.fujicam_timestamps,
-        #         compression=self.fujicam_compression_alg
-        #     )
+
+        # with open(filedir+'line_scan.pickle','wb') as file:
+        #     pickle.dump(self.fujicam_line_profiles,file)
+        # np.savetxt(filedir + "line_scan_stamps.csv",self.fujicam_timestamps,delimiter=',')
+
+        with h5py.File(f"{filedir}line_scan.h5", 'w') as file:
+            file.create_dataset(
+                'line_scans',
+                data=np.array(self.fujicam_line_profiles),
+                compression=self.fujicam_compression_alg
+            )
+            file.create_dataset(
+                'timestamps',
+                data=self.fujicam_timestamps,
+                compression=self.fujicam_compression_alg
+            )
 
     ##### Microphone callbacks and functions #####
 
