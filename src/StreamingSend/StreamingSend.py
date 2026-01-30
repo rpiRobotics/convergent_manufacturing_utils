@@ -116,6 +116,7 @@ class StreamingSend(object):
         self.init_motion()
 
         for j in range(int(num_points_jogging)):
+            self.rate_obj.Sleep()
             q_target = (q_cur*(num_points_jogging-j))/num_points_jogging+qd*j/num_points_jogging
             self.position_cmd(q_target,time.perf_counter())
 
