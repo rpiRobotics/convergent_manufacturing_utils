@@ -15,7 +15,11 @@ class WeldRRSensor(object):
             cam_2_service=None,\
             fujicam_service=None,\
             microphone_service=None,\
-            current_service=None) -> None:
+            current_service=None,\
+            save_as_pickle=False) -> None:
+
+        ## saving format
+        self.save_as_pickle=save_as_pickle
 
         ## weld service
         self.weld_service=weld_service
@@ -323,18 +327,25 @@ class WeldRRSensor(object):
                 self.ir_timestamp.append(time.perf_counter()+self.t_offset)
 
     def save_ir_file(self,filedir):
-        with h5py.File(f"{filedir}ir_recording.h5", 'w') as file:
-            file.create_dataset(
-                'video_frames',
-                data=np.array(self.ir_recording),
-                chunks=self.ir_chunk_shape,
-                compression=self.ir_compression_alg
-            )
-            file.create_dataset(
-                'timestamps',
-                data=self.ir_timestamp,
-                compression=self.ir_compression_alg
-            )
+
+        if self.save_as_pickle:
+            with open(filedir+'ir_recording.pickle','wb') as file:
+                pickle.dump(np.array(self.ir_recording),file)
+            np.savetxt(filedir + "ir_stamps.csv",self.ir_timestamp,delimiter=',')
+        else:
+            # save as hdf5
+            with h5py.File(f"{filedir}ir_recording.h5", 'w') as file:
+                file.create_dataset(
+                    'video_frames',
+                    data=np.array(self.ir_recording),
+                    chunks=self.ir_chunk_shape,
+                    compression=self.ir_compression_alg
+                )
+                file.create_dataset(
+                    'timestamps',
+                    data=self.ir_timestamp,
+                    compression=self.ir_compression_alg
+                )
 
     def ir_2_cb(self,pipe_ep):
         # Loop to get the newest frame
@@ -350,11 +361,16 @@ class WeldRRSensor(object):
                 self.ir_2_timestamp.append(time.perf_counter()+self.t_offset)
 
     def save_ir_2_file(self,filedir):
-        with h5py.File(f"{filedir}ir_2_recording.h5", 'w') as file:
-            file.create_dataset(
-                'video_frames',
-                data=np.array(self.ir_2_recording),
-                chunks=self.ir_2_chunk_shape,
+        if self.save_as_pickle:
+            with open(filedir+'ir_2_recording.pickle','wb') as file:
+                pickle.dump(np.array(self.ir_2_recording),file)
+            np.savetxt(filedir + "ir_2_stamps.csv",self.ir_2_timestamp,delimiter=',')
+        else:
+            with h5py.File(f"{filedir}ir_2_recording.h5", 'w') as file:
+                file.create_dataset(
+                    'video_frames',
+                    data=np.array(self.ir_2_recording),
+                    chunks=self.ir_2_chunk_shape,
                 compression=self.ir_2_compression_alg
             )
             file.create_dataset(
@@ -402,20 +418,25 @@ class WeldRRSensor(object):
         #     pickle.dump(self.fujicam_line_profiles,file)
         # np.savetxt(filedir + "line_scan_stamps.csv",self.fujicam_timestamps,delimiter=',')
 
-        with h5py.File(f"{filedir}line_scan.h5", 'w') as file:
-            file.create_dataset(
-                'line_scans',
-                data=np.array(self.fujicam_line_profiles),
-                compression=self.fujicam_compression_alg
-            )
-            file.create_dataset(
-                'timestamps',
-                data=self.fujicam_timestamps,
-                compression=self.fujicam_compression_alg
-            )
+        if self.save_as_pickle:
+            with open(filedir+'line_scan.pickle','wb') as file:
+                pickle.dump(np.array(self.fujicam_line_profiles),file)
+            np.savetxt(filedir + "line_scan_stamps.csv",self.fujicam_timestamps,delimiter=',')
+        else:
+            # save as hdf5
+            with h5py.File(f"{filedir}line_scan.h5", 'w') as file:
+                file.create_dataset(
+                    'line_scans',
+                    data=np.array(self.fujicam_line_profiles),
+                    compression=self.fujicam_compression_alg
+                )
+                file.create_dataset(
+                    'timestamps',
+                    data=self.fujicam_timestamps,
+                    compression=self.fujicam_compression_alg
+                )
 
     ##### Microphone callbacks and functions #####
-
     def clean_mic_record(self):
 
         self.audio_recording=[]
