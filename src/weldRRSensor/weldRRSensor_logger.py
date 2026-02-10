@@ -160,6 +160,7 @@ class WeldRRSensorLogger(object):
                     drop_policy=self.datalogger_info['drop_policy'],
                     rollover_max_bytes=self.datalogger_info['rollover_max_bytes'],
                     checkpoint_on_rollover=self.datalogger_info['checkpoint_on_rollover'],
+                    status_report_interval_s=self.datalogger_info['status_report_interval_s']
                 )
                 msg = f"Logger started successfully. Output directory: {out_dir}"
                 logger_switch_status_wire_v.success = True
@@ -286,11 +287,6 @@ class WeldRRSensorLogger(object):
     def robot_state_cb(self, sub, value, ts):
         
         if self.start_robot_cb:
-            # self.joint_recording.append(
-            #     np.hstack((
-            #         [time.perf_counter()+self.t_offset,float(value.ts['microseconds'])/1e6],
-            #         value.joint_position))
-            # )
             timestamp_ns = int((time.perf_counter()+self.t_offset)*1e9)
             self.logger.log_data(self.robot_joint_topic_name,
                                  value.joint_position,
@@ -300,21 +296,12 @@ class WeldRRSensorLogger(object):
     def weld_cb(self, sub, value, ts):
 
         if self.start_weld_cb:
-            # self.weld_timestamp.append(value.ts['microseconds'][0])
-            # self.weld_timestamp.append(time.perf_counter()+self.t_offset)
-            # self.weld_voltage.append(value.welding_voltage)
-            # self.weld_current.append(value.welding_current)
-            # self.weld_feedrate.append(value.wire_speed)
-            # self.weld_energy.append(value.welding_energy)
             weld_data = np.array([value.welding_voltage, value.welding_current, value.wire_speed, value.welding_energy], dtype=np.float32)
             timestamp_ns = int((time.perf_counter()+self.t_offset)*1e9)
             self.logger.log_data(self.weld_log_topic_name, weld_data, timestamp_ns=timestamp_ns)
 
     def current_cb(self, sub, value, ts):
         if self.start_current_cb:
-            # self.current_timestamp.append(ts.seconds+ts.nanoseconds*1e-9)
-            # self.current_timestamp.append(time.perf_counter()+self.t_offset)
-            # self.current.append(value)
             current_data = np.array([value], dtype=np.float32)
             timestamp_ns = int((time.perf_counter()+self.t_offset)*1e9)
             self.logger.log_data(self.current_topic_name, current_data, timestamp_ns=timestamp_ns)
@@ -343,10 +330,6 @@ class WeldRRSensorLogger(object):
                 else:
                     display_mat = mat
 
-                # # Convert the packet to an image and set the global variable
-                # self.ir_recording.append(copy.deepcopy(display_mat))
-                # # self.ir_timestamp.append(rr_img.image_info.data_header.ts['seconds']+rr_img.image_info.data_header.ts['nanoseconds']*1e-9)
-                # self.ir_timestamp.append(time.perf_counter()+self.t_offset)
                 timestamp_ns = int((time.perf_counter()+self.t_offset)*1e9)
                 self.logger.log_data(self.ir_topic_name, 
                                      display_mat.astype(np.float32), timestamp_ns=timestamp_ns)
@@ -359,10 +342,7 @@ class WeldRRSensorLogger(object):
             if self.start_ir_2_cb:
                 # convert the packet to an image
                 cv_img=self.img_2_util.image_to_array(rr_img)
-
-                # save frame and timestamp
-                # self.ir_2_recording.append(cv_img)
-                # self.ir_2_timestamp.append(time.perf_counter()+self.t_offset)
+                
                 timestamp_ns = int((time.perf_counter()+self.t_offset)*1e9)
                 self.logger.log_data(self.ir_2_topic_name, 
                                      cv_img.astype(np.float32), timestamp_ns=timestamp_ns)
@@ -374,10 +354,7 @@ class WeldRRSensorLogger(object):
     def fujicam_value_changed_handler(self, con, wire_packet_value, ts):
         if not self.start_fujicam_cb:
             return
-
-        # invalid_indices = np.concatenate((np.where(wire_packet_value.I_data<=1)[0], np.where(np.abs(wire_packet_value.Z_data)<10)[0]))
-        # y_data[invalid_indices]=np.nan
-        # z_data[invalid_indices]=np.nan
+        
         y_data = wire_packet_value.Y_data
         z_data = wire_packet_value.Z_data
         I_data = wire_packet_value.I_data
@@ -410,6 +387,7 @@ def arg_parse():
     ap.add_argument("--db_commit_period_s", type=float, default=0.05, help="Commit period (s) for data logger")
     ap.add_argument("--db_drop_policy", type=str, default="drop_oldest", choices=["drop_oldest", "drop_newest"], help="Drop policy for data logger when queue is full")
     ap.add_argument("--db_rollover_max_bytes", type=float, default=1, help="Max GB for data logger file rollover")
+    ap.add_argument("--db_status_update_interval", type=float, default=10.0, help="Interval (s) for data logger status updates in console")
 
     args = ap.parse_args()
     return args
@@ -459,6 +437,7 @@ def main():
         'drop_policy': args.db_drop_policy,
         'rollover_max_bytes': int(args.db_rollover_max_bytes * 1024 * 1024 * 1024),  # N GiB segments (demo)
         'checkpoint_on_rollover': True,
+        'status_report_interval_s': args.db_status_update_interval
     }
 
     with RR.ServerNodeSetup("experimental.weldRRSensor_logger", 12183):
