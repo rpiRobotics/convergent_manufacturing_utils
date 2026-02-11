@@ -99,7 +99,6 @@ class SQLiteStreamLogger:
                 "batch_size": self.batch_size,
                 "commit_period_s": self.commit_period_s,
                 "drop_policy": self.drop_policy,
-                "enable_indexes": self.enable_indexes,
                 "rollover_max_bytes": self.rollover_max_bytes,
                 "checkpoint_on_rollover": self.checkpoint_on_rollover,
             },

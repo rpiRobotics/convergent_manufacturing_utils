@@ -1,0 +1,22 @@
+service experimental.sensor_data_logger
+struct logger_switch_struct
+    field bool logger_on_off
+    field string output_dir 
+end
+struct logger_switch_response_struct
+    field bool success
+    field string message
+end
+struct sensor_switch_struct
+    field bool robot_joints
+    field bool fronius
+    field bool current
+    field bool fujicam
+    field bool flir
+    field bool xiris
+end
+object sensor_data_logger_obj
+    wire logger_switch_struct logger_switch [writeonly]
+    wire sensor_switch_struct sensor_switch [writeonly]
+    wire logger_switch_response_struct logger_switch_response [readonly]
+end object

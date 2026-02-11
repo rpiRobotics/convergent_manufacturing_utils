@@ -7,30 +7,9 @@ import traceback
 
 from SQLiteStreamLogger import SQLiteStreamLogger
 
-rr_data_logger="""
-service experimental.rr_data_logger
-struct logger_switch_struct
-    field bool logger_on_off
-    field string output_dir 
-end
-struct logger_switch_response_struct
-    field bool sucess
-    field string message
-end
-struct sensor_switch_struct
-    field bool robot_joints
-    field bool fronius
-    field bool current
-    field bool fujicam
-    field bool flir
-    field bool xiris
-end
-object rr_data_logger_obj
-    wire logger_switch_struct logger_switch [writeonly]
-    wire sensor_switch_struct sensor_switch
-    wire logger_switch_response_struct logger_switch_response [readonly]
-end object
-"""
+# sensor_data_logger="""
+
+# """
 
 class WeldRRSensorLogger(object):
     def __init__(self,\
@@ -40,26 +19,38 @@ class WeldRRSensorLogger(object):
             cam_service=None,\
             cam_2_service=None,\
             fujicam_service=None,\
-            microphone_service=None,\
             current_service=None) -> None:
         
         # sqlite data logger info
         self.datalogger_info = datalogger_info
 
+        self.robot_service = robot_service
+        self.weld_service = weld_service
+        self.cam_service = cam_service
+        self.cam_2_service = cam_2_service
+        self.fujicam_service = fujicam_service
+        self.current_service=current_service
+
         # initialize all callback flags to false to avoid reading the flags before the service is connected and the callback is set
+        # self.start_robot_cb=False
+        # self.start_weld_cb=False
+        # self.start_ir_cb=False
+        # self.start_ir_2_cb=False
+        # self.start_fujicam_cb=False
+        # self.start_current_cb=False
         self.stop_all_sensors()
 
+    def RRServiceObjectInit(self, ctx, service_path):
+
         ## robot service
-        self.robot_service = robot_service
-        if robot_service:
+        if self.robot_service:
             self.robot_joint_data_shape = (15,) # controller stamps + 2 6-joints robot + 1 2-joints positioner
             self.robot_joint_topic_name = "robot_joints"
-            self.RR_robot_state = robot_service.SubscribeWire('robot_state')
+            self.RR_robot_state = self.robot_service.SubscribeWire('robot_state')
             self.RR_robot_state.WireValueChanged += self.robot_state_cb
         
         ## weld service
-        self.weld_service=weld_service
-        if weld_service:
+        if self.weld_service:
             self.weld_log_data_shape = (4,) # voltage, current, feedrate, energy
             self.weld_log_topic_name = "fronius_welder"
             self.weld_obj = self.weld_service.GetDefaultClientWait(3)  # connect, timeout=30s
@@ -67,12 +58,11 @@ class WeldRRSensorLogger(object):
             self.welder_state_sub.WireValueChanged += self.weld_cb
 
         ## IR Camera Service - FLIR
-        self.cam_ser=cam_service
-        if cam_service:
-            self.ir_image_consts = RRN.GetConstants('com.robotraconteur.image', self.cam_ser)
-            self.cam_pipe=self.cam_ser.frame_stream.Connect(-1)
+        if self.cam_service:
+            self.ir_image_consts = RRN.GetConstants('com.robotraconteur.image', self.cam_service)
+            self.cam_pipe=self.cam_service.frame_stream.Connect(-1)
             # set the hdf5 save params
-            rr_img = cam_service.capture_frame()
+            rr_img = self.cam_service.capture_frame()
             self.ir_w = rr_img.image_info.width
             self.ir_h = rr_img.image_info.height
             self.ir_data_shape = (self.ir_h, self.ir_w) # image height and width
@@ -82,15 +72,14 @@ class WeldRRSensorLogger(object):
             self.cam_pipe.PacketReceivedEvent+=self.ir_cb
 
         ## IR Camera Service 2 - Xiris
-        self.cam_2_ser=cam_2_service
-        if cam_2_service:
-            self.ir_2_image_consts = RRN.GetConstants("com.robotraconteur.imaging", self.cam_2_ser)
-            self.xiris_weldsdk_consts = RRN.GetConstants("experimental.xiris.weldsdk", self.cam_2_ser)
-            self.img_2_util = ImageUtil(client_obj=self.cam_2_ser)
-            self.cam_pipe_2=self.cam_2_ser.frame_stream.Connect(-1)
+        if self.cam_2_service:
+            self.ir_2_image_consts = RRN.GetConstants("com.robotraconteur.imaging", self.cam_2_service)
+            self.xiris_weldsdk_consts = RRN.GetConstants("experimental.xiris.weldsdk", self.cam_2_service)
+            self.img_2_util = ImageUtil(client_obj=self.cam_2_service)
+            self.cam_pipe_2=self.cam_2_service.frame_stream.Connect(-1)
 
             # set the hdf5 save params
-            rr_img = cam_2_service.capture_frame()
+            rr_img = self.cam_2_service.capture_frame()
             self.ir_2_w = rr_img.image_info.width
             self.ir_2_h = rr_img.image_info.height
             self.ir_2_data_shape = (self.ir_2_h, self.ir_2_w) # image height and width
@@ -99,14 +88,13 @@ class WeldRRSensorLogger(object):
             #Set the callback for new pipe packets
             self.cam_pipe_2.PacketReceivedEvent+=self.ir_2_cb
             try:
-                self.cam_2_ser.start_streaming()
+                self.cam_2_service.start_streaming()
             except:
                 traceback.print_exc()
                 print("error starting xiris stream")
         
         ## Scanner service - FujiCam
-        self.fujicam_service=fujicam_service
-        if fujicam_service:
+        if self.fujicam_service:
             self.fujicam_data_shape = (1016,3) # 1016 points per line, each point has (y,z,intensity)
             self.fujicam_topic_name = "fujicam_line_profile"
             # get service wire connection
@@ -117,8 +105,7 @@ class WeldRRSensorLogger(object):
             self.fujicam_scan_wire.WireValueChanged += self.fujicam_value_changed_handler
 
         ## current service (current clamp sensor)
-        self.current_service=current_service
-        if current_service:
+        if self.current_service:
             self.current_data_shape = (1,) # current clamp data only has 1 value: current
             self.current_topic_name = "current_clamp"
             self.current_state_sub = self.current_service.SubscribeWire("current")
@@ -127,137 +114,155 @@ class WeldRRSensorLogger(object):
         ## calculate time offset
         self.t_offset = RRN.NowNodeTime().timestamp()-time.perf_counter()
 
-    def RRServiceObjectInit(self, ctx, service_path):
-        
+        # register callback
         self.logger_switch.InValueChanged += self.logger_switch_cb
         self.sensor_switch.InValueChanged += self.sensor_switch_cb
 
-    def logger_switch_cb(self, w, value, ts):
-        
-        out_dir = value.output_dir
-        logger_on_off = value.logger_on_off
-        logger_switch_response_wire_v = RRN.NewStructure("experimental.rr_data_logger.logger_switch_response_struct")
+    def logger_switch_cb(self, value, w, ts):
 
-        if logger_on_off:
-            # if the client switch on the logger
-            if hasattr(self, 'logger') and self.logger is not None:
-                # logger is already running, do not start a new one
-                msg = "Logger is already running. Please stop the logger before starting a new one."
-                logger_switch_response_wire_v.success = False
-                logger_switch_response_wire_v.message = msg   
-            elif os.path.exists(out_dir):
-                # output directory already exists, do not start logger to avoid overwriting data
-                logger_switch_response_wire_v.success = False
-                logger_switch_response_wire_v.message = msg
-            else:
-                # start the logger
-                self.logger = SQLiteStreamLogger(
-                    out_dir=out_dir,
-                    base_name=self.datalogger_info['base_name'],
-                    queue_max=self.datalogger_info['queue_max'],
-                    batch_size=self.datalogger_info['batch_size'],
-                    commit_period_s=self.datalogger_info['commit_period_s'],
-                    drop_policy=self.datalogger_info['drop_policy'],
-                    rollover_max_bytes=self.datalogger_info['rollover_max_bytes'],
-                    checkpoint_on_rollover=self.datalogger_info['checkpoint_on_rollover'],
-                    status_report_interval_s=self.datalogger_info['status_report_interval_s']
-                )
-                msg = f"Logger started successfully. Output directory: {out_dir}"
-                logger_switch_response_wire_v.success = True
-                logger_switch_response_wire_v.message = msg
-        else:
-            # if the client switch off the logger
-            self.stop_all_sensors() # stop all the sensor recording callbacks to avoid recording data when logger is stopped
-            if hasattr(self, 'logger') and self.logger is not None:
-                self.logger.close()
-                msg = "Logger stopped successfully."
-                msg += "\nFinal stats:"
-                msg += str(self.logger.get_stats())
-                del self.logger
-                logger_switch_response_wire_v.success = True
-                logger_switch_response_wire_v.message = msg
-            else:
-                msg = "Logger is not running."
-                logger_switch_response_wire_v.success = False
-                logger_switch_response_wire_v.message = msg
+        print("Call back")
+        try:
+            print(value.output_dir)
+            out_dir = value.output_dir
+            print(out_dir)
+            logger_on_off = value.logger_on_off
+            print(logger_on_off)
+            logger_switch_response_wire_v = RRN.NewStructure("experimental.sensor_data_logger.logger_switch_response_struct")
         
-        print(msg)
-        self.logger_switch_response.OutValue = logger_switch_response_wire_v
+            print("Call back")
+
+            if logger_on_off:
+                print("Get logger on")
+                # if the client switch on the logger
+                if hasattr(self, 'logger') and self.logger is not None:
+                    # logger is already running, do not start a new one
+                    msg = "Logger is already running. Please stop the logger before starting a new one."
+                    logger_switch_response_wire_v.success = False
+                    logger_switch_response_wire_v.message = msg   
+                elif os.path.exists(out_dir):
+                    msg = "path exisits"
+                    # output directory already exists, do not start logger to avoid overwriting data
+                    logger_switch_response_wire_v.success = False
+                    logger_switch_response_wire_v.message = msg
+                else:
+                    msg = "start logger"
+                    # start the logger
+                    self.logger = SQLiteStreamLogger(
+                        out_dir=out_dir,
+                        base_name=self.datalogger_info['base_name'],
+                        queue_max=self.datalogger_info['queue_max'],
+                        batch_size=self.datalogger_info['batch_size'],
+                        commit_period_s=self.datalogger_info['commit_period_s'],
+                        drop_policy=self.datalogger_info['drop_policy'],
+                        rollover_max_bytes=self.datalogger_info['rollover_max_bytes'],
+                        checkpoint_on_rollover=self.datalogger_info['checkpoint_on_rollover'],
+                        status_report_interval_s=self.datalogger_info['status_report_interval_s']
+                    )
+                    self.logger.start_logging()
+                    msg = f"Logger started successfully. Output directory: {out_dir}"
+                    logger_switch_response_wire_v.success = True
+                    logger_switch_response_wire_v.message = msg
+            else:
+                # if the client switch off the logger
+                self.stop_all_sensors() # stop all the sensor recording callbacks to avoid recording data when logger is stopped
+                if hasattr(self, 'logger') and self.logger is not None:
+                    self.logger.close()
+                    msg = "Logger stopped successfully."
+                    msg += "\nFinal stats:"
+                    msg += str(self.logger.get_stats())
+                    del self.logger
+                    logger_switch_response_wire_v.success = True
+                    logger_switch_response_wire_v.message = msg
+                else:
+                    msg = "Logger is not running."
+                    logger_switch_response_wire_v.success = False
+                    logger_switch_response_wire_v.message = msg
+            
+            print(msg)
+            self.logger_switch_response.OutValue = logger_switch_response_wire_v
+        
+        except:
+            traceback.print_exc()
+
         return
 
-    def sensor_switch_cb(self, w, value, ts):
+    def sensor_switch_cb(self, value, w , ts):
 
-        if not hasattr(self, 'logger') or self.logger is None:
-            print("Logger is not running. Please switch ON the logger before switching ON the sensors.")
-            return
-        
-        if value.robot_joints and self.robot_service:
-            print("Robot joints recording enabled.")
-            self.logger.register_topic(self.robot_joint_topic_name, "float32", self.robot_joint_data_shape)
-            self.start_robot_cb=True
-        elif self.robot_service:
-            print("Robot joints recording disabled.")
-            self.start_robot_cb=False
-        else:
-            print("Robot joint service not connected.")
-        
-        if value.fronius and self.weld_service:
-            print("Fronius welder recording enabled.")
-            self.logger.register_topic(self.weld_log_topic_name, "float32", self.weld_log_data_shape)
-            self.start_weld_cb=True
-        elif self.weld_service:
-            print("Fronius welder recording disabled.")
-            self.start_weld_cb=False
-        else:
-            print("Fronius welder service not connected.")
-        
-        if value.current and self.current_service:
-            print("Current clamp recording enabled.")
-            self.logger.register_topic(self.current_topic_name, "float32", self.current_data_shape)
-            self.start_current_cb=True
-        elif self.current_service:
-            print("Current clamp recording disabled.")
-            self.start_current_cb=False
-        else:
-            print("Current clamp service not connected.")
-        
-        if value.fujicam and self.fujicam_service:
-            print("FujiCam scanner recording enabled.")
-            self.logger.register_topic(self.fujicam_topic_name, "float32", self.fujicam_data_shape)
-            self.start_fujicam_cb=True
-        elif self.fujicam_service:
-            print("FujiCam scanner recording disabled.")
-            self.start_fujicam_cb=False
-        else:
-            print("FujiCam scanner service not connected.")
-        
-        if value.flir and self.cam_ser:
-            print("FLIR camera recording enabled.")
-            self.logger.register_topic(self.ir_topic_name, "float32", self.ir_data_shape)
-            self.start_ir_cb=True
-        elif self.cam_ser:
-            print("FLIR camera recording disabled.")
-            self.start_ir_cb=False
-        else:
-            print("FLIR camera service not connected.")
-        
-        if value.xiris and self.cam_2_ser:
-            print("Xiris camera recording enabled.")
-            self.logger.register_topic(self.ir_2_topic_name, "float32", self.ir_2_data_shape)
-            self.start_ir_2_cb=True
-        elif self.cam_2_ser:
-            print("Xiris camera recording disabled.")
-            self.start_ir_2_cb=False
-        else:
-            print("Xiris camera service not connected.")
+        try:
+
+            if not hasattr(self, 'logger') or self.logger is None:
+                print("Logger is not running. Please switch ON the logger before switching ON the sensors.")
+                return
+            
+            if value.robot_joints and self.robot_service:
+                print("Robot joints recording enabled.")
+                self.logger.register_topic(self.robot_joint_topic_name, "float32", self.robot_joint_data_shape)
+                self.start_robot_cb=True
+            elif self.robot_service:
+                print("Robot joints recording disabled.")
+                self.start_robot_cb=False
+            else:
+                print("Robot joint service not connected.")
+            
+            if value.fronius and self.weld_service:
+                print("Fronius welder recording enabled.")
+                self.logger.register_topic(self.weld_log_topic_name, "float32", self.weld_log_data_shape)
+                self.start_weld_cb=True
+            elif self.weld_service:
+                print("Fronius welder recording disabled.")
+                self.start_weld_cb=False
+            else:
+                print("Fronius welder service not connected.")
+            
+            if value.current and self.current_service:
+                print("Current clamp recording enabled.")
+                self.logger.register_topic(self.current_topic_name, "float32", self.current_data_shape)
+                self.start_current_cb=True
+            elif self.current_service:
+                print("Current clamp recording disabled.")
+                self.start_current_cb=False
+            else:
+                print("Current clamp service not connected.")
+            
+            if value.fujicam and self.fujicam_service:
+                print("FujiCam scanner recording enabled.")
+                self.logger.register_topic(self.fujicam_topic_name, "float32", self.fujicam_data_shape)
+                self.start_fujicam_cb=True
+            elif self.fujicam_service:
+                print("FujiCam scanner recording disabled.")
+                self.start_fujicam_cb=False
+            else:
+                print("FujiCam scanner service not connected.")
+            
+            if value.flir and self.cam_service:
+                print("FLIR camera recording enabled.")
+                self.logger.register_topic(self.ir_topic_name, "float32", self.ir_data_shape)
+                self.start_ir_cb=True
+            elif self.cam_service:
+                print("FLIR camera recording disabled.")
+                self.start_ir_cb=False
+            else:
+                print("FLIR camera service not connected.")
+            
+            if value.xiris and self.cam_2_service:
+                print("Xiris camera recording enabled.")
+                self.logger.register_topic(self.ir_2_topic_name, "float32", self.ir_2_data_shape)
+                self.start_ir_2_cb=True
+            elif self.cam_2_service:
+                print("Xiris camera recording disabled.")
+                self.start_ir_2_cb=False
+            else:
+                print("Xiris camera service not connected.")
+        except:
+            traceback.print_exc()
     
     def start_all_sensors(self):
 
         if self.weld_service:
             self.start_weld_cb=True
-        if self.cam_ser:
+        if self.cam_service:
             self.start_ir_cb=True
-        if self.cam_2_ser:
+        if self.cam_2_service:
             self.start_ir_2_cb=True
         if self.fujicam_service:
             self.start_fujicam_cb=True
@@ -274,14 +279,14 @@ class WeldRRSensorLogger(object):
         self.start_fujicam_cb=False
         self.start_current_cb=False
 
-        sensor_switch_wire_v = RRN.NewStructure("experimental.rr_data_logger.sensor_switch_struct")
-        sensor_switch_wire_v.robot_joints = False
-        sensor_switch_wire_v.fronius = False
-        sensor_switch_wire_v.current = False
-        sensor_switch_wire_v.fujicam = False
-        sensor_switch_wire_v.flir = False
-        sensor_switch_wire_v.xiris = False
-        self.sensor_switch.OutValue = sensor_switch_wire_v
+        # sensor_switch_wire_v = RRN.NewStructure("experimental.sensor_data_logger.sensor_switch_struct")
+        # sensor_switch_wire_v.robot_joints = False
+        # sensor_switch_wire_v.fronius = False
+        # sensor_switch_wire_v.current = False
+        # sensor_switch_wire_v.fujicam = False
+        # sensor_switch_wire_v.flir = False
+        # sensor_switch_wire_v.xiris = False
+        # self.sensor_switch.OutValue = sensor_switch_wire_v
     
     ##### robot state recording callbacks and functions #####
     def robot_state_cb(self, sub, value, ts):
@@ -397,36 +402,7 @@ def main():
     # read in command line arguments
     args = arg_parse()
     
-    # robot joint angles
-    RR_robot_sub = None
-    if args.robot_joints:
-        robot_joints_url = args.robot_joints_url
-        RR_robot_sub=RRN.SubscribeService(robot_joints_url)
-    # fronius welder log
-    fronius_sub = None
-    if args.fronius:
-        fronius_url = args.fronius_url
-        fronius_sub=RRN.SubscribeService(fronius_url)
-    # Current clamp log
-    current_ser = None
-    if args.current:
-        current_url = args.current_url
-        current_ser=RRN.SubscribeService(current_url)
-    # fujicam scanner
-    fujicam_ser = None
-    if args.fujicam:
-        fujicam_url = args.fujicam_url
-        fujicam_ser=RRN.SubscribeService(fujicam_url)
-    # FLIR
-    flir_ser = None
-    if args.flir:
-        flir_url = args.flir_url
-        flir_ser=RRN.ConnectService(flir_url)
-    # Xiris
-    xiris_ser = None
-    if args.xiris:
-        xiris_url = args.xiris_url
-        xiris_ser=RRN.ConnectService(xiris_url)
+    
 
     # data logger information
     datalogger_info = {
@@ -440,9 +416,41 @@ def main():
         'status_report_interval_s': args.db_status_update_interval
     }
 
-    with RR.ServerNodeSetup("experimental.rr_data_logger", 12183):
+    with RR.ServerNodeSetup("experimental.sensor_data_logger", 12182):
+        # robot joint angles
+        RR_robot_sub = None
+        if args.robot_joints:
+            robot_joints_url = args.robot_joints_url
+            RR_robot_sub=RRN.SubscribeService(robot_joints_url)
+        # fronius welder log
+        fronius_sub = None
+        if args.fronius:
+            fronius_url = args.fronius_url
+            fronius_sub=RRN.SubscribeService(fronius_url)
+        # Current clamp log
+        current_ser = None
+        if args.current:
+            current_url = args.current_url
+            current_ser=RRN.SubscribeService(current_url)
+        # fujicam scanner
+        fujicam_ser = None
+        if args.fujicam:
+            fujicam_url = args.fujicam_url
+            fujicam_ser=RRN.SubscribeService(fujicam_url)
+        # FLIR
+        flir_ser = None
+        if args.flir:
+            flir_url = args.flir_url
+            flir_ser=RRN.ConnectService(flir_url)
+        # Xiris
+        xiris_ser = None
+        if args.xiris:
+            xiris_url = args.xiris_url
+            xiris_ser=RRN.ConnectService(xiris_url)
+
         # Register the service type
-        RRN.RegisterServiceType(rr_data_logger)
+        # RRN.RegisterServiceType(sensor_data_logger)
+        RRN.RegisterServiceTypeFromFile("robdef/experimental.sensor_data_logger")
 
         weld_logger = WeldRRSensorLogger(\
             datalogger_info=datalogger_info,\
@@ -454,7 +462,7 @@ def main():
             current_service=current_ser)
         
         # Register the service
-        RRN.RegisterService("weldRRSensor_logger", "experimental.rr_data_logger.rr_data_logger_obj", weld_logger)
+        RRN.RegisterService("weldRRSensor_logger", "experimental.sensor_data_logger.sensor_data_logger_obj", weld_logger)
         print("WeldRRSensor Logger Service started...")
         print("Data logger base name: ", args.db_base_name)
         print("DB queue max size: ", args.db_queue_max)
