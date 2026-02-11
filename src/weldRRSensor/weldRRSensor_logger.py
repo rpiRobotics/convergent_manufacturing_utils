@@ -13,7 +13,7 @@ struct logger_switch_struct
     field bool logger_on_off
     field string output_dir 
 end
-struct logger_switch_status_struct
+struct logger_switch_response_struct
     field bool sucess
     field string message
 end
@@ -28,7 +28,7 @@ end
 object rr_data_logger_obj
     wire logger_switch_struct logger_switch [writeonly]
     wire sensor_switch_struct sensor_switch
-    wire logger_switch_status_struct logger_switch_status [readonly]
+    wire logger_switch_response_struct logger_switch_response [readonly]
 end object
 """
 
@@ -136,19 +136,19 @@ class WeldRRSensorLogger(object):
         
         out_dir = value.output_dir
         logger_on_off = value.logger_on_off
-        logger_switch_status_wire_v = RRN.NewStructure("experimental.rr_data_logger.logger_switch_status_struct")
+        logger_switch_response_wire_v = RRN.NewStructure("experimental.rr_data_logger.logger_switch_response_struct")
 
         if logger_on_off:
             # if the client switch on the logger
             if hasattr(self, 'logger') and self.logger is not None:
                 # logger is already running, do not start a new one
                 msg = "Logger is already running. Please stop the logger before starting a new one."
-                logger_switch_status_wire_v.success = False
-                logger_switch_status_wire_v.message = msg   
+                logger_switch_response_wire_v.success = False
+                logger_switch_response_wire_v.message = msg   
             elif os.path.exists(out_dir):
                 # output directory already exists, do not start logger to avoid overwriting data
-                logger_switch_status_wire_v.success = False
-                logger_switch_status_wire_v.message = msg
+                logger_switch_response_wire_v.success = False
+                logger_switch_response_wire_v.message = msg
             else:
                 # start the logger
                 self.logger = SQLiteStreamLogger(
@@ -163,8 +163,8 @@ class WeldRRSensorLogger(object):
                     status_report_interval_s=self.datalogger_info['status_report_interval_s']
                 )
                 msg = f"Logger started successfully. Output directory: {out_dir}"
-                logger_switch_status_wire_v.success = True
-                logger_switch_status_wire_v.message = msg
+                logger_switch_response_wire_v.success = True
+                logger_switch_response_wire_v.message = msg
         else:
             # if the client switch off the logger
             self.stop_all_sensors() # stop all the sensor recording callbacks to avoid recording data when logger is stopped
@@ -174,15 +174,15 @@ class WeldRRSensorLogger(object):
                 msg += "\nFinal stats:"
                 msg += str(self.logger.get_stats())
                 del self.logger
-                logger_switch_status_wire_v.success = True
-                logger_switch_status_wire_v.message = msg
+                logger_switch_response_wire_v.success = True
+                logger_switch_response_wire_v.message = msg
             else:
                 msg = "Logger is not running."
-                logger_switch_status_wire_v.success = False
-                logger_switch_status_wire_v.message = msg
+                logger_switch_response_wire_v.success = False
+                logger_switch_response_wire_v.message = msg
         
         print(msg)
-        self.logger_switch_status.OutValue = logger_switch_status_wire_v
+        self.logger_switch_response.OutValue = logger_switch_response_wire_v
         return
 
     def sensor_switch_cb(self, w, value, ts):
@@ -274,14 +274,14 @@ class WeldRRSensorLogger(object):
         self.start_fujicam_cb=False
         self.start_current_cb=False
 
-        sensor_switch_status_wire_v = RRN.NewStructure("experimental.rr_data_logger.sensor_switch_struct")
-        sensor_switch_status_wire_v.robot_joints = False
-        sensor_switch_status_wire_v.fronius = False
-        sensor_switch_status_wire_v.current = False
-        sensor_switch_status_wire_v.fujicam = False
-        sensor_switch_status_wire_v.flir = False
-        sensor_switch_status_wire_v.xiris = False
-        self.sensor_switch.OutValue = sensor_switch_status_wire_v
+        sensor_switch_wire_v = RRN.NewStructure("experimental.rr_data_logger.sensor_switch_struct")
+        sensor_switch_wire_v.robot_joints = False
+        sensor_switch_wire_v.fronius = False
+        sensor_switch_wire_v.current = False
+        sensor_switch_wire_v.fujicam = False
+        sensor_switch_wire_v.flir = False
+        sensor_switch_wire_v.xiris = False
+        self.sensor_switch.OutValue = sensor_switch_wire_v
     
     ##### robot state recording callbacks and functions #####
     def robot_state_cb(self, sub, value, ts):
@@ -440,7 +440,7 @@ def main():
         'status_report_interval_s': args.db_status_update_interval
     }
 
-    with RR.ServerNodeSetup("experimental.weldRRSensor_logger", 12183):
+    with RR.ServerNodeSetup("experimental.rr_data_logger", 12183):
         # Register the service type
         RRN.RegisterServiceType(rr_data_logger)
 
