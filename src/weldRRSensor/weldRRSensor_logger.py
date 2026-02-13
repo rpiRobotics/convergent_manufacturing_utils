@@ -8,6 +8,9 @@ import threading
 
 from SQLiteStreamLogger import SQLiteStreamLogger
 
+def wrap_angle(angle):
+    return ((angle + np.pi) % (np.pi*2)) - np.pi
+
 class LoggerClientHelper(object):
     def __init__(self, logger_rr_url = 'rr+tcp://localhost:12182?service=weldRRSensor_logger'):
         # connect to the logger RR service
@@ -116,10 +119,13 @@ class WeldRRSensorLogger(object):
             cam_service=None,\
             cam_2_service=None,\
             fujicam_service=None,\
-            current_service=None) -> None:
+            current_service=None,
+            msg_type=np.float32) -> None:
         
         # sqlite data logger info
         self.datalogger_info = datalogger_info
+
+        self.msg_type = msg_type
 
         self.robot_service = robot_service
         self.weld_service = weld_service
@@ -380,20 +386,20 @@ class WeldRRSensorLogger(object):
         if self.start_robot_cb:
             timestamp_ns = int((time.perf_counter()+self.t_offset)*1e9)
             self.logger.log_data(self.robot_joint_topic_name,
-                                 np.array(value.joint_position).astype(np.float32),
+                                 wrap_angle(np.array(value.joint_position).astype(self.msg_type)),
                                  timestamp_ns=timestamp_ns)
 
     ##### welding and current recording callbacks and functions #####
     def weld_cb(self, sub, value, ts):
 
         if self.start_weld_cb:
-            weld_data = np.array([value.welding_voltage, value.welding_current, value.wire_speed, value.welding_energy], dtype=np.float32)
+            weld_data = np.array([value.welding_voltage, value.welding_current, value.wire_speed, value.welding_energy], dtype=self.msg_type)
             timestamp_ns = int((time.perf_counter()+self.t_offset)*1e9)
             self.logger.log_data(self.weld_log_topic_name, weld_data, timestamp_ns=timestamp_ns)
 
     def current_cb(self, sub, value, ts):
         if self.start_current_cb:
-            current_data = np.array([value], dtype=np.float32)
+            current_data = np.array([value], dtype=self.msg_type)
             timestamp_ns = int((time.perf_counter()+self.t_offset)*1e9)
             self.logger.log_data(self.current_topic_name, current_data, timestamp_ns=timestamp_ns)
 
@@ -423,7 +429,7 @@ class WeldRRSensorLogger(object):
 
                 timestamp_ns = int((time.perf_counter()+self.t_offset)*1e9)
                 self.logger.log_data(self.ir_topic_name, 
-                                     display_mat.astype(np.float32), timestamp_ns=timestamp_ns)
+                                     display_mat.astype(self.msg_type), timestamp_ns=timestamp_ns)
 
     def ir_2_cb(self,pipe_ep):
         # Loop to get the newest frame
@@ -436,7 +442,7 @@ class WeldRRSensorLogger(object):
                 
                 timestamp_ns = int((time.perf_counter()+self.t_offset)*1e9)
                 self.logger.log_data(self.ir_2_topic_name, 
-                                     cv_img.astype(np.float32), timestamp_ns=timestamp_ns)
+                                     cv_img.astype(self.msg_type), timestamp_ns=timestamp_ns)
                 
     ##### FujiCam scanner callbacks and functions #####
     def fujicam_connect_failed_handler(self, s, client_id, url, err):
@@ -446,16 +452,16 @@ class WeldRRSensorLogger(object):
         if not self.start_fujicam_cb:
             return
         
-        y_data = wire_packet_value.Y_data
-        z_data = wire_packet_value.Z_data
-        I_data = wire_packet_value.I_data
-        line_profile=np.hstack((y_data.reshape(-1,1),z_data.reshape(-1,1),I_data.reshape(-1,1)))
+        line_profile = np.zeros(self.fujicam_data_shape, dtype=self.msg_type)
+        line_profile[:,0] = wire_packet_value.Y_data
+        line_profile[:,1] = wire_packet_value.Z_data
+        line_profile[:,2] = wire_packet_value.I_data
 
         # self.fujicam_line_profiles.append(line_profile)
         # self.fujicam_timestamps.append(time.perf_counter()+self.t_offset)
         timestamp_ns = int((time.perf_counter()+self.t_offset)*1e9)
         self.logger.log_data(self.fujicam_topic_name, 
-                             line_profile.astype(np.float32), timestamp_ns=timestamp_ns)
+                             line_profile.astype(self.msg_type), timestamp_ns=timestamp_ns)
 
 def arg_parse():
     
