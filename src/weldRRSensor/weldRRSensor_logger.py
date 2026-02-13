@@ -44,7 +44,7 @@ class WeldRRSensorLogger(object):
 
         ## robot service
         if self.robot_service:
-            self.robot_joint_data_shape = (15,) # controller stamps + 2 6-joints robot + 1 2-joints positioner
+            self.robot_joint_data_shape = (14,) # controller stamps + 2 6-joints robot + 1 2-joints positioner
             self.robot_joint_topic_name = "robot_joints"
             self.RR_robot_state = self.robot_service.SubscribeWire('robot_state')
             self.RR_robot_state.WireValueChanged += self.robot_state_cb
@@ -198,6 +198,7 @@ class WeldRRSensorLogger(object):
                 print("Robot joints recording enabled.")
                 self.logger.register_topic(self.robot_joint_topic_name, "float32", self.robot_joint_data_shape)
                 self.start_robot_cb=True
+                self.robot_joint_cnt = 0
             elif self.robot_service:
                 print("Robot joints recording disabled.")
                 self.start_robot_cb=False
@@ -208,6 +209,7 @@ class WeldRRSensorLogger(object):
                 print("Fronius welder recording enabled.")
                 self.logger.register_topic(self.weld_log_topic_name, "float32", self.weld_log_data_shape)
                 self.start_weld_cb=True
+                self.weld_log_cnter = 0
             elif self.weld_service:
                 print("Fronius welder recording disabled.")
                 self.start_weld_cb=False
@@ -218,6 +220,7 @@ class WeldRRSensorLogger(object):
                 print("Current clamp recording enabled.")
                 self.logger.register_topic(self.current_topic_name, "float32", self.current_data_shape)
                 self.start_current_cb=True
+                self.current_cnter = 0
             elif self.current_service:
                 print("Current clamp recording disabled.")
                 self.start_current_cb=False
@@ -228,6 +231,7 @@ class WeldRRSensorLogger(object):
                 print("FujiCam scanner recording enabled.")
                 self.logger.register_topic(self.fujicam_topic_name, "float32", self.fujicam_data_shape)
                 self.start_fujicam_cb=True
+                self.fuji_line_cnter = 0
             elif self.fujicam_service:
                 print("FujiCam scanner recording disabled.")
                 self.start_fujicam_cb=False
@@ -238,6 +242,7 @@ class WeldRRSensorLogger(object):
                 print("FLIR camera recording enabled.")
                 self.logger.register_topic(self.ir_topic_name, "float32", self.ir_data_shape)
                 self.start_ir_cb=True
+                self.cam_img_cnter = 0
             elif self.cam_service:
                 print("FLIR camera recording disabled.")
                 self.start_ir_cb=False
@@ -248,6 +253,7 @@ class WeldRRSensorLogger(object):
                 print("Xiris camera recording enabled.")
                 self.logger.register_topic(self.ir_2_topic_name, "float32", self.ir_2_data_shape)
                 self.start_ir_2_cb=True
+                self.cam_2_img_cnter = 0
             elif self.cam_2_service:
                 print("Xiris camera recording disabled.")
                 self.start_ir_2_cb=False
@@ -260,14 +266,22 @@ class WeldRRSensorLogger(object):
 
         if self.weld_service:
             self.start_weld_cb=True
+            self.weld_log_cnter = 0
         if self.cam_service:
             self.start_ir_cb=True
+            self.cam_img_cnter = 0
         if self.cam_2_service:
             self.start_ir_2_cb=True
+            self.cam_2_img_cnter = 0
         if self.fujicam_service:
             self.start_fujicam_cb=True
+            self.fuji_line_cnter = 0
         if self.current_service:
             self.start_current_cb=True
+            self.current_cnter = 0
+        if self.robot_service:
+            self.start_robot_cb = True
+            self.robot_joint_cnt = 0
 
     def stop_all_sensors(self):
 
@@ -294,8 +308,9 @@ class WeldRRSensorLogger(object):
         if self.start_robot_cb:
             timestamp_ns = int((time.perf_counter()+self.t_offset)*1e9)
             self.logger.log_data(self.robot_joint_topic_name,
-                                 value.joint_position,
+                                 np.array(value.joint_position).astype(np.float32),
                                  timestamp_ns=timestamp_ns)
+            self.robot_joint_cnt += 1
 
     ##### welding and current recording callbacks and functions #####
     def weld_cb(self, sub, value, ts):
@@ -304,12 +319,14 @@ class WeldRRSensorLogger(object):
             weld_data = np.array([value.welding_voltage, value.welding_current, value.wire_speed, value.welding_energy], dtype=np.float32)
             timestamp_ns = int((time.perf_counter()+self.t_offset)*1e9)
             self.logger.log_data(self.weld_log_topic_name, weld_data, timestamp_ns=timestamp_ns)
+            self.weld_log_cnter += 1
 
     def current_cb(self, sub, value, ts):
         if self.start_current_cb:
             current_data = np.array([value], dtype=np.float32)
             timestamp_ns = int((time.perf_counter()+self.t_offset)*1e9)
             self.logger.log_data(self.current_topic_name, current_data, timestamp_ns=timestamp_ns)
+            self.current_cnter += 1
 
     ##### FLIR and Xiris camera callbacks and functions #####
     def ir_cb(self,pipe_ep):
@@ -338,6 +355,7 @@ class WeldRRSensorLogger(object):
                 timestamp_ns = int((time.perf_counter()+self.t_offset)*1e9)
                 self.logger.log_data(self.ir_topic_name, 
                                      display_mat.astype(np.float32), timestamp_ns=timestamp_ns)
+                self.cam_img_cnter += 1
 
     def ir_2_cb(self,pipe_ep):
         # Loop to get the newest frame
@@ -351,6 +369,7 @@ class WeldRRSensorLogger(object):
                 timestamp_ns = int((time.perf_counter()+self.t_offset)*1e9)
                 self.logger.log_data(self.ir_2_topic_name, 
                                      cv_img.astype(np.float32), timestamp_ns=timestamp_ns)
+                self.cam_2_img_cnter += 1
                 
     ##### FujiCam scanner callbacks and functions #####
     def fujicam_connect_failed_handler(self, s, client_id, url, err):
@@ -370,6 +389,7 @@ class WeldRRSensorLogger(object):
         timestamp_ns = int((time.perf_counter()+self.t_offset)*1e9)
         self.logger.log_data(self.fujicam_topic_name, 
                              line_profile.astype(np.float32), timestamp_ns=timestamp_ns)
+        self.fuji_line_cnter += 1
 
 def arg_parse():
     
@@ -481,6 +501,12 @@ def main():
         input("Press Enter to exit...\n")
         if hasattr(weld_logger, 'logger') and weld_logger.logger is not None:
             weld_logger.stop_all_sensors() # stop all the sensor recording callbacks to avoid recording data when logger is stopped
+            print(weld_logger.robot_joint_cnt)
+            print(weld_logger.cam_img_cnter)
+            print(weld_logger.cam_2_img_cnter)
+            print(weld_logger.weld_log_cnter)
+            print(weld_logger.current_cnter)
+            print(weld_logger.fuji_line_cnter)
             weld_logger.logger.close()
 
 if __name__ == "__main__":
