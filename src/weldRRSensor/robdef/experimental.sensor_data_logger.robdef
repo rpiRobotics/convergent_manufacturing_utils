@@ -15,8 +15,18 @@ struct sensor_switch_struct
     field bool flir
     field bool xiris
 end
+struct sensor_switch_response_struct
+    field bool robot_joints_status
+    field bool fronius_status
+    field bool current_status
+    field bool fujicam_status
+    field bool flir_status
+    field bool xiris_status
+    field string message
+end
 object sensor_data_logger_obj
     wire logger_switch_struct logger_switch [writeonly]
     wire sensor_switch_struct sensor_switch [writeonly]
     wire logger_switch_response_struct logger_switch_response [readonly]
+    wire sensor_switch_response_struct sensor_switch_response [readonly]
 end object
