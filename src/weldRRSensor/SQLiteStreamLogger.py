@@ -84,6 +84,7 @@ class SQLiteStreamLogger:
         self._written = 0
         self._bytes_written = 0
         self._rollovers = 0
+        self._topic_msg_counter = {}
         self._stats_lock = threading.Lock()
 
         # Prepare folder + metadata
@@ -112,6 +113,7 @@ class SQLiteStreamLogger:
     def start_logging(self):
         """Start the writer thread (if not already started)."""
         if not self._writer_thread.is_alive():
+            self._clear_stats() # reset the status
             self._open_new_segment() # open first segment before starting thread (ensures DB ready for incoming data)
             self._writer_thread.start()
     
@@ -131,6 +133,10 @@ class SQLiteStreamLogger:
         
         self._metadata["topics"][name] = {"dtype": dtype, "shape": list(shape)}
         self._write_metadata()
+
+        # topic total message counter before save
+        if name not in self._topic_msg_counter:
+            self._topic_msg_counter[name] = 0
 
         return key
 
@@ -198,6 +204,7 @@ class SQLiteStreamLogger:
                 "written": self._written,
                 "bytes_written": self._bytes_written,
                 "rollovers": self._rollovers,
+                "topics_msgs_counts": self._topic_msg_counter
             }
 
     def close(self):
@@ -211,6 +218,15 @@ class SQLiteStreamLogger:
     # ----------------------------
     # DB / Segment handling
     # ----------------------------
+
+    def _clear_stats(self):
+        self._dropped = 0
+        self._enqueued = 0
+        self._written = 0
+        self._bytes_written = 0
+        self._rollovers = 0
+        for name in self._topic_msg_counter:
+            self._topic_msg_counter[name] = 0
 
     def _segment_filename(self, idx: int) -> str:
         return f"{self.base_name}_{idx:05d}.db3"
@@ -389,6 +405,8 @@ class SQLiteStreamLogger:
                     f"enq={st['enqueued']} drop={st['dropped']} written={st['written']} "
                     f"bytes={mb:.1f} MiB rollovers={st['rollovers']}"
                 )
+                for name in self._topic_msg_counter:
+                    print(f"Topic {name}: {self._topic_msg_counter[name]} messages")
                 last_report = now
 
         # Final flush
