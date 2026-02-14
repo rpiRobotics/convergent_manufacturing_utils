@@ -25,6 +25,9 @@ class WeldRRSensor(object):
         
         self.msg_type = np.float64
 
+        ## calculate time offset
+        self.t_offset = RRN.NowNodeTime().timestamp()-time.perf_counter()
+
         ## robot joints service
         self.robot_service=robot_service
         if self.robot_service:
@@ -176,9 +179,6 @@ class WeldRRSensor(object):
             self.current_state_sub = self.current_service.SubscribeWire("current")
             self.start_current_cb = False
             self.current_state_sub.WireValueChanged += self.current_cb
-
-        ## calculate time offset
-        self.t_offset = RRN.NowNodeTime().timestamp()-time.perf_counter()
 
     def _get_recent_msgs(self, k, count, write_idx, msg_buffer, ts_buffer):
 

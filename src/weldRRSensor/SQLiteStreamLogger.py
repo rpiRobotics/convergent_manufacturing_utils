@@ -157,6 +157,9 @@ class SQLiteStreamLogger:
             raise ValueError(f"{topic_name}: expected dtype {info.dtype}, got {data.dtype}")
         if tuple(data.shape) != tuple(info.shape):
             raise ValueError(f"{topic_name}: expected shape {info.shape}, got {data.shape}")
+    
+        # counter +1 
+        self._topic_msg_counter[topic_name] += 1
 
         if timestamp_ns is None:
             timestamp_ns = time.time_ns()

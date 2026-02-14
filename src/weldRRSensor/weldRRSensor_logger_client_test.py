@@ -31,23 +31,31 @@ def main():
     for layer_i in range(3):
         print("Starting the layer",layer_i)
         logger_start_success, logger_info = logger.logger_switch(
-            switch_on_off=True, output_dir=os.path.join(os.getcwd(), 'layer_'+str(layer_i))
+            switch_on_off=True, 
+            robot_joints_register=True, fronius_register=True, current_register=True,
+            fujicam_register=True, flir_register=True, xiris_register=True,
+            output_dir=os.path.join(os.getcwd(), 'layer_'+str(layer_i))
         )
+        # input()
+        assert logger_start_success, 'Logger does not successfully start because of problems.'
         print("Turn on the sensors")
         # set all sensors to ON for this layer
         sensor_status, logger_info = logger.loggger_sensor_switch(
             robot_joints_switch=True, fronius_switch=True, current_switch=True,
             fujicam_switch=True, flir_switch=True, xiris_switch=True
         )
+        print("Turn on the sensors success")
 
         # simulate welding for some time
         time.sleep(20) # welding
 
         # turn off the logger for this layer
+        print("Turning off the sensor")
         sensor_status, logger_info = logger.loggger_sensor_switch(
             robot_joints_switch=False, fronius_switch=False, current_switch=False,
             fujicam_switch=False, flir_switch=False, xiris_switch=False
         )
+        print("Turing off the logger and save")
         # turn off the logger
         logger_start_success, logger_info = logger.logger_switch(
             switch_on_off=False

@@ -1,5 +1,11 @@
 service experimental.sensor_data_logger
 struct logger_switch_struct
+    field bool robot_joints_register
+    field bool fronius_register
+    field bool current_register
+    field bool fujicam_register
+    field bool flir_register
+    field bool xiris_register
     field bool logger_on_off
     field string output_dir 
 end
