@@ -39,7 +39,7 @@ class WeldRRSensor(object):
             self._robot_joint_count = 0
             self._robot_joint_lock = threading.Lock()
 
-            self.RR_robot_state = self.robot_service.SubscribeWire('robot_state')
+            self.RR_robot_state = self.robot_service
             self.RR_robot_state.WireValueChanged += self.robot_state_cb
 
         ## weld service
@@ -185,12 +185,13 @@ class WeldRRSensor(object):
         if count <= 0 or k <=0 :
             return None, None
         
+        k = min(k, count)
+        N = msg_buffer.shape[0]
+        
         if k == 1:
             idx = (write_idx - 1) % N
             return ts_buffer[idx].item(), msg_buffer[idx].copy()
         
-        k = min(k, count)
-        N = msg_buffer.shape[0]
         end = write_idx
         start = (end - k) % N
 

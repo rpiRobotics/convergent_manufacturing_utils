@@ -5,14 +5,24 @@ import time, copy, os
 import numpy as np
 import traceback
 import threading
+from importlib.resources import files
 
-from SQLiteStreamLogger import SQLiteStreamLogger
+try:
+    from weldRRSensor.SQLiteStreamLogger import SQLiteStreamLogger
+except ModuleNotFoundError:
+    from SQLiteStreamLogger import SQLiteStreamLogger
+import weldRRSensor
 
 def wrap_angle(angle):
     return ((angle + np.pi) % (np.pi*2)) - np.pi
 
 class LoggerClientHelper(object):
     def __init__(self, logger_rr_url = 'rr+tcp://localhost:12182?service=weldRRSensor_logger'):
+
+        # connect to RRN service type
+        pkg_path = files(weldRRSensor)
+        RRN.RegisterServiceTypeFromFile(os.path.join(pkg_path,"robdef/experimental.sensor_data_logger"))
+
         # connect to the logger RR service
         self.logger_service = RRN.ConnectService(logger_rr_url)
         self.logger_switch_wire = self.logger_service.logger_switch.Connect()

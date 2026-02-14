@@ -8,9 +8,7 @@ from weldRRSensor_new import WeldRRSensor
 from weldRRSensor_logger import LoggerClientHelper
         
 def main():
-
-    RRN.RegisterServiceTypeFromFile("robdef/experimental.sensor_data_logger")
-
+    
     RR_robot_sub = RRN.SubscribeService('rr+tcp://localhost:59945?service=robot')
     fronius_sub=RRN.SubscribeService('rr+tcp://192.168.55.21:60823?service=welder')
     current_ser=RRN.SubscribeService('rr+tcp://192.168.55.21:12182?service=Current')
