@@ -4,7 +4,7 @@ import time
 import os
 import threading
 
-from weldRRSensor import WeldRRSensor
+from weldRRSensor_new import WeldRRSensor
 from weldRRSensor_logger import LoggerClientHelper
         
 def main():

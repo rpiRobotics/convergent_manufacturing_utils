@@ -6,7 +6,10 @@ from matplotlib import pyplot as plt
 import sys
 
 class WeldRRSensor(object):
-    def __init__(self,weld_service = None,\
+    def __init__(self,
+            robot_service=None,\
+            robot_joint_buffer = 250,\
+            weld_service = None,\
             weldlog_msg_buffer = 20, \
             cam_service = None,\
             flir_focus_pos = 1900,\
@@ -21,6 +24,20 @@ class WeldRRSensor(object):
             current_msg_buffer = 2000) -> None:
         
         self.msg_type = np.float64
+
+        ## robot joints service
+        self.robot_service=robot_service
+        if self.robot_service:
+            self.robot_joint_data_shape = (14,) # 2 6-joints robot + 1 2-joints positioner
+            # weld log message buffer
+            self.robot_joint_frames = np.empty((robot_joint_buffer,14), dtype=self.msg_type)
+            self.robot_joint_ts = np.empty((robot_joint_buffer,), dtype=self.msg_type)
+            self._robot_joint_write_idx = 0
+            self._robot_joint_count = 0
+            self._robot_joint_lock = threading.Lock()
+
+            self.RR_robot_state = self.robot_service.SubscribeWire('robot_state')
+            self.RR_robot_state.WireValueChanged += self.robot_state_cb
 
         ## weld service
         self.weld_service=weld_service
@@ -191,6 +208,35 @@ class WeldRRSensor(object):
             ts[first_part:] = ts_buffer[:k-first_part]
 
         return ts, frames
+    
+    def robot_state_cb(self, sub, value, ts):
+        
+        # add to preallocate queue
+        ts_offset = time.perf_counter()+self.t_offset
+        if self._robot_joint_lock.acquire(blocking=False):
+            try:
+                i = self._robot_joint_write_idx
+                self.robot_joint_frames[i] = np.array(value.joint_position).astype(self.msg_type)  # copy into ring buffer
+                self.robot_joint_ts[i] = ts_offset
+
+                self._robot_joint_write_idx = (i + 1) % self.robot_joint_frames.shape[0]
+                self._robot_joint_count = min(self._robot_joint_count + 1, self.robot_joint_frames.shape[0])
+            finally:
+                self._robot_joint_lock.release()
+        else:
+            pass  # drop
+    
+    def get_recent_robot_joints(self, k=1):
+
+        if k==0 or not self._robot_joint_lock.acquire(blocking=False):
+            return None, None
+        try:
+            ts, frames = self._get_recent_msgs(k, self._robot_joint_count, self._robot_joint_write_idx,
+                                        self.robot_joint_frames, self.robot_joint_ts)
+        finally:
+            self._robot_joint_lock.release()
+        return ts, frames
+
     
     def weld_cb(self, sub, value, ts):
         
