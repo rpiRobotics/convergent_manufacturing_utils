@@ -253,7 +253,9 @@ class WeldRRSensorLogger(object):
                     msg = "Logger is already running. Please stop the logger before starting a new one."
                     logger_switch_response_wire_v.success = False
                     logger_switch_response_wire_v.message = msg   
-                elif os.path.exists(out_dir):
+                # elif os.path.exists(out_dir):
+                elif os.path.exists(out_dir + '/' + self.datalogger_info['base_name']):
+                    print(os.path.exists(out_dir + '/' + self.datalogger_info['base_name']),"exists")
                     msg = "Data output path exisits. Logger start failed."
                     # output directory already exists, do not start logger to avoid overwriting data
                     logger_switch_response_wire_v.success = False
@@ -525,7 +527,7 @@ def arg_parse():
     ap.add_argument("--db_batch_size", type=int, default=256, help="Batch size for data logger commits")
     ap.add_argument("--db_commit_period_s", type=float, default=0.05, help="Commit period (s) for data logger")
     ap.add_argument("--db_drop_policy", type=str, default="drop_oldest", choices=["drop_oldest", "drop_newest"], help="Drop policy for data logger when queue is full")
-    ap.add_argument("--db_rollover_max_bytes", type=float, default=1, help="Max GB for data logger file rollover")
+    ap.add_argument("--db_rollover_max_GB", type=float, default=1, help="Max GB for data logger file rollover")
     ap.add_argument("--db_status_update_interval", type=float, default=10.0, help="Interval (s) for data logger status updates in console")
 
     args = ap.parse_args()
@@ -543,7 +545,7 @@ def main():
         'batch_size': args.db_batch_size,
         'commit_period_s': args.db_commit_period_s,
         'drop_policy': args.db_drop_policy,
-        'rollover_max_bytes': int(args.db_rollover_max_bytes * 1024 * 1024 * 1024),  # N GiB segments (demo)
+        'rollover_max_bytes': int(args.db_rollover_max_GB * 1024 * 1024 * 1024),  # N GiB segments (demo)
         'checkpoint_on_rollover': True,
         'status_report_interval_s': args.db_status_update_interval
     }
@@ -601,7 +603,7 @@ def main():
         print("DB batch size: ", args.db_batch_size)
         print("DB commit period (s): ", args.db_commit_period_s)
         print("DB drop policy: ", args.db_drop_policy)
-        print("DB rollover max size (GB): ", args.db_rollover_max_bytes)
+        print("DB rollover max size (GB): ", args.db_rollover_max_GB)
         print("Services:")
         print("Robot joints: ", args.robot_joints)
         print("Fronius welder: ", args.fronius)
