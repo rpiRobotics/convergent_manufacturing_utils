@@ -28,8 +28,8 @@ class StreamingSend(object):
         self.initialize_robot()
 
         # calculate time offset
-        # commenting to deactivate for now
         self.t_offset = RRN.NowNodeTime().timestamp()-time.perf_counter()
+        self.rate_obj = None
 
         # intialized here, but not necessary
         self.prev_time = time.perf_counter()
@@ -99,6 +99,7 @@ class StreamingSend(object):
         self.RR_position_cmd.SetOutValueAll(joint_cmd1)
 
         self.prev_time = time.perf_counter()
+        self.rate_obj.Sleep()
 
         return
 
@@ -109,10 +110,9 @@ class StreamingSend(object):
         num_points_jogging=self.streaming_rate*np.max(np.abs(q_cur-qd))/point_distance
         # initialize the rate object
         self.init_motion()
-        rate_obj = RRN.CreateRate(self.streaming_rate)
 
         for j in range(int(num_points_jogging)):
-            rate_obj.Sleep()
+            self.rate_obj.Sleep()
             q_target = (q_cur*(num_points_jogging-j))/num_points_jogging+qd*j/num_points_jogging
             self.position_cmd(q_target)
 
@@ -121,7 +121,13 @@ class StreamingSend(object):
             self.position_cmd(qd)
 
     def init_motion(self):
+        self.rate_obj = RRN.CreateRate(self.streaming_rate)
         self.prev_time = time.perf_counter()
+
+    def deinit_motion(self):
+        self.rate_obj = None
+
+        
 
     def traj_streaming(self,curve_js,ctrl_joints):
         ###curve_js: Nxn, 2d joint space trajectory
