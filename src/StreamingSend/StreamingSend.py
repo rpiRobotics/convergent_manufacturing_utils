@@ -22,7 +22,6 @@ class StreamingSend(object):
         self.RR_robot_state.WireValueChanged += self.robot_state_cb
         self.streaming_rate=streaming_rate
         self.command_seqno=0
-        self.rate_obj=None # initializing and will update later
 
         ###data logging
         self.joint_logging_flag=False
@@ -78,7 +77,7 @@ class StreamingSend(object):
 
         return breakpoints
 
-    def position_cmd(self,qd,start_time=None):
+    def position_cmd(self,qd):
         if (time.perf_counter()-self.prev_time)>self.max_delay:
             raise Exception("Maximum allowed delay time reached. \n Check to see if motion was initialized/de-initialized.")
         ###qd: joint position command
@@ -110,25 +109,19 @@ class StreamingSend(object):
         num_points_jogging=self.streaming_rate*np.max(np.abs(q_cur-qd))/point_distance
         # initialize the rate object
         self.init_motion()
+        rate_obj = RRN.CreateRate(self.streaming_rate)
 
         for j in range(int(num_points_jogging)):
-            self.rate_obj.Sleep()
+            rate_obj.Sleep()
             q_target = (q_cur*(num_points_jogging-j))/num_points_jogging+qd*j/num_points_jogging
-            self.position_cmd(q_target,time.perf_counter())
+            self.position_cmd(q_target)
 
         ###init point wait
         for i in range(20):
-            self.position_cmd(qd,time.perf_counter())
-
-        ### set wait object to none to throw error before initializing
-        self.deinit_motion()
+            self.position_cmd(qd)
 
     def init_motion(self):
-        self.rate_obj = RRN.CreateRate(self.streaming_rate)
         self.prev_time = time.perf_counter()
-
-    def deinit_motion(self):
-        self.rate_obj = None
 
     def traj_streaming(self,curve_js,ctrl_joints):
         ###curve_js: Nxn, 2d joint space trajectory
