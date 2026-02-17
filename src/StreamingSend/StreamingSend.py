@@ -10,6 +10,7 @@ class StreamingSend(object):
         max_delay: The maximum tolerable delay between rate commands without throwing an error.
         '''
         self.RR_robot_state = RR_robot_sub.SubscribeWire('robot_state')
+        self.RR_position_cmd = RR_robot_sub.SubscribeWire('position_command')
         self.RR_robot = RR_robot_sub.GetDefaultClientWait(1)
         robot_const = RRN.GetConstants("com.robotraconteur.robotics.robot", self.RR_robot)
         self.halt_mode = robot_const["RobotCommandMode"]["halt"]
@@ -95,11 +96,9 @@ class StreamingSend(object):
         # Set the joint command
         joint_cmd1.command = qd
 
-        # ensure the command is sent at the correct streaming rate
-        self.rate_obj.Sleep()
-
         # Send the joint command to the robot
-        self.RR_robot.position_command.PokeOutValue(joint_cmd1)
+        self.RR_position_cmd.SetOutValueAll(joint_cmd1)
+
         self.prev_time = time.perf_counter()
 
         return
@@ -113,6 +112,7 @@ class StreamingSend(object):
         self.init_motion()
 
         for j in range(int(num_points_jogging)):
+            self.rate_obj.Sleep()
             q_target = (q_cur*(num_points_jogging-j))/num_points_jogging+qd*j/num_points_jogging
             self.position_cmd(q_target,time.perf_counter())
 
