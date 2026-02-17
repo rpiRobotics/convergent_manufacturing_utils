@@ -96,11 +96,7 @@ class StreamingSend(object):
         # Set the joint command
         joint_cmd1.command = qd
 
-        # # ensure the command is sent at the correct streaming rate
-        # self.rate_obj.Sleep()
-
         # Send the joint command to the robot
-        # self.RR_robot.position_command.PokeOutValue(joint_cmd1)
         self.RR_position_cmd.SetOutValueAll(joint_cmd1)
 
         self.prev_time = time.perf_counter()
