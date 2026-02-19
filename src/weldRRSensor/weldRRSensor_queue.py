@@ -5,7 +5,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 import sys
 
-class WeldRRSensor(object):
+class WeldRRSensor_Queue(object):
     def __init__(self,
             robot_service=None,\
             robot_joint_buffer = 250,\
