@@ -3,13 +3,14 @@ import time, copy
 from RobotRaconteur.Client import *
 
 class StreamingSend(object):
-    def __init__(self,RR_robot_sub,streaming_rate=125.,latency=0.1, max_delay=0.5):
+    def __init__(self,RR_robot_sub,streaming_rate=125.,latency=0.1, max_delay=0.1):
         '''
         streaming_rate: the rate which motion is streamed
         latency: (not used) the delay between when the command is sent and the robot moves.
         max_delay: The maximum tolerable delay between rate commands without throwing an error.
         '''
         self.RR_robot_state = RR_robot_sub.SubscribeWire('robot_state')
+        self.RR_position_cmd = RR_robot_sub.SubscribeWire('position_command')
         self.RR_robot = RR_robot_sub.GetDefaultClientWait(1)
         robot_const = RRN.GetConstants("com.robotraconteur.robotics.robot", self.RR_robot)
         self.halt_mode = robot_const["RobotCommandMode"]["halt"]
@@ -21,15 +22,14 @@ class StreamingSend(object):
         self.RR_robot_state.WireValueChanged += self.robot_state_cb
         self.streaming_rate=streaming_rate
         self.command_seqno=0
-        self.rate_obj=None # initializing and will update later
 
         ###data logging
         self.joint_logging_flag=False
         self.initialize_robot()
 
         # calculate time offset
-        # commenting to deactivate for now
         self.t_offset = RRN.NowNodeTime().timestamp()-time.perf_counter()
+        self.rate_obj = None
 
         # intialized here, but not necessary
         self.prev_time = time.perf_counter()
@@ -77,7 +77,7 @@ class StreamingSend(object):
 
         return breakpoints
 
-    def position_cmd(self,qd,start_time=None):
+    def position_cmd(self,qd):
         if (time.perf_counter()-self.prev_time)>self.max_delay:
             raise Exception("Maximum allowed delay time reached. \n Check to see if motion was initialized/de-initialized.")
         ###qd: joint position command
@@ -95,12 +95,12 @@ class StreamingSend(object):
         # Set the joint command
         joint_cmd1.command = qd
 
-        # ensure the command is sent at the correct streaming rate
-        self.rate_obj.Sleep()
-
         # Send the joint command to the robot
+        # self.RR_position_cmd.SetOutValueAll(joint_cmd1)
         self.RR_robot.position_command.PokeOutValue(joint_cmd1)
+
         self.prev_time = time.perf_counter()
+        self.rate_obj.Sleep()
 
         return
 
@@ -114,13 +114,12 @@ class StreamingSend(object):
 
         for j in range(int(num_points_jogging)):
             q_target = (q_cur*(num_points_jogging-j))/num_points_jogging+qd*j/num_points_jogging
-            self.position_cmd(q_target,time.perf_counter())
+            self.position_cmd(q_target)
 
         ###init point wait
         for i in range(20):
-            self.position_cmd(qd,time.perf_counter())
+            self.position_cmd(qd)
 
-        ### set wait object to none to throw error before initializing
         self.deinit_motion()
 
     def init_motion(self):
@@ -129,6 +128,8 @@ class StreamingSend(object):
 
     def deinit_motion(self):
         self.rate_obj = None
+
+        
 
     def traj_streaming(self,curve_js,ctrl_joints):
         ###curve_js: Nxn, 2d joint space trajectory
