@@ -3,7 +3,7 @@ import time, copy
 from RobotRaconteur.Client import *
 
 class StreamingSend(object):
-    def __init__(self,RR_robot_sub,streaming_rate=125.,latency=0.1, max_delay=0.5):
+    def __init__(self,RR_robot_sub,streaming_rate=125.,latency=0.1, max_delay=0.1):
         '''
         streaming_rate: the rate which motion is streamed
         latency: (not used) the delay between when the command is sent and the robot moves.
@@ -96,7 +96,8 @@ class StreamingSend(object):
         joint_cmd1.command = qd
 
         # Send the joint command to the robot
-        self.RR_position_cmd.SetOutValueAll(joint_cmd1)
+        # self.RR_position_cmd.SetOutValueAll(joint_cmd1)
+        self.RR_robot.position_command.PokeOutValue(joint_cmd1)
 
         self.prev_time = time.perf_counter()
         self.rate_obj.Sleep()
@@ -112,13 +113,14 @@ class StreamingSend(object):
         self.init_motion()
 
         for j in range(int(num_points_jogging)):
-            self.rate_obj.Sleep()
             q_target = (q_cur*(num_points_jogging-j))/num_points_jogging+qd*j/num_points_jogging
             self.position_cmd(q_target)
 
         ###init point wait
         for i in range(20):
             self.position_cmd(qd)
+
+        self.deinit_motion()
 
     def init_motion(self):
         self.rate_obj = RRN.CreateRate(self.streaming_rate)
