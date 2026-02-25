@@ -378,9 +378,10 @@ class WeldRRSensorLogger(object):
             return
         
         line_profile = np.zeros(self.fujicam_data_shape, dtype=self.msg_type)
-        line_profile[:,0] = wire_packet_value.Y_data
-        line_profile[:,1] = wire_packet_value.Z_data
-        line_profile[:,2] = wire_packet_value.I_data
+        data_length = len(wire_packet_value.Y_data)
+        line_profile[:data_length,0] = wire_packet_value.Y_data
+        line_profile[:data_length,1] = wire_packet_value.Z_data
+        line_profile[:data_length,2] = wire_packet_value.I_data
 
         # self.fujicam_line_profiles.append(line_profile)
         # self.fujicam_timestamps.append(time.perf_counter()+self.t_offset)

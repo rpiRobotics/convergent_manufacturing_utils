@@ -395,8 +395,9 @@ class WeldRRSensor_Queue(object):
 
         ts_offset = time.perf_counter() + self.t_offset
         line_profile = np.zeros(self.fujicam_data_shape, dtype=self.msg_type)
-        line_profile[:,0] = wire_packet_value.Y_data
-        line_profile[:,1] = wire_packet_value.Z_data
+        data_length = len(wire_packet_value.Y_data)
+        line_profile[:data_length,0] = wire_packet_value.Y_data
+        line_profile[:data_length,1] = wire_packet_value.Z_data
 
         # add to preallocate queue
         if self._fujicam_lock.acquire(blocking=False):
