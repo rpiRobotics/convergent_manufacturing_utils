@@ -1,0 +1,38 @@
+service experimental.sensor_data_logger
+struct logger_switch_struct
+    field bool robot_joints_register
+    field bool fronius_register
+    field bool current_register
+    field bool fujicam_register
+    field bool flir_register
+    field bool xiris_register
+    field bool logger_on_off
+    field string output_dir 
+end
+struct logger_switch_response_struct
+    field bool success
+    field string message
+end
+struct sensor_switch_struct
+    field bool robot_joints
+    field bool fronius
+    field bool current
+    field bool fujicam
+    field bool flir
+    field bool xiris
+end
+struct sensor_switch_response_struct
+    field bool robot_joints_status
+    field bool fronius_status
+    field bool current_status
+    field bool fujicam_status
+    field bool flir_status
+    field bool xiris_status
+    field string message
+end
+object sensor_data_logger_obj
+    wire logger_switch_struct logger_switch [writeonly]
+    wire sensor_switch_struct sensor_switch [writeonly]
+    wire logger_switch_response_struct logger_switch_response [readonly]
+    wire sensor_switch_response_struct sensor_switch_response [readonly]
+end object
