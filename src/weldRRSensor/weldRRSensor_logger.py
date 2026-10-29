@@ -117,7 +117,7 @@ class WeldRRSensorLogger(object):
 
         ## pyrometer service
         if self.pyro_service:
-            self.pyro_data_shape = (10,) # valid, process, ratio, t1, t2, attenuation, box, detector, imbalance, latency_ms
+            self.pyro_data_shape = (9,) # process, ratio, t1, t2, attenuation, box, detector, imbalance, latency_ms
             self.pyro_topic_name = "pyrometer"
             self.pyro_state_sub = self.pyro_service.SubscribeWire("reading")
             self.pyro_state_sub.WireValueChanged += self.pyro_cb
@@ -354,9 +354,9 @@ class WeldRRSensorLogger(object):
             self.logger.log_data(self.current_topic_name, current_data, timestamp_ns=timestamp_ns)
 
     def pyro_cb(self, sub, value, ts):
-        #log every sample including invalid ones
+        #log every sample; no driver valid flag, judge from the sensor's own channels
         if self.start_pyro_cb:
-            pyro_data = np.array([value.valid, value.process_temp, value.ratio_temp,
+            pyro_data = np.array([value.process_temp, value.ratio_temp,
                                   value.t1_temp, value.t2_temp, value.attenuation,
                                   value.box_temp, value.detector_temp, value.imbalance,
                                   value.latency_ms], dtype=self.msg_type)
