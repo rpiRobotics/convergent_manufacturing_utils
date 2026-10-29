@@ -372,12 +372,12 @@ class WeldRRSensor(object):
                     data=np.array(self.ir_2_recording),
                     chunks=self.ir_2_chunk_shape,
                 compression=self.ir_2_compression_alg
-            )
-            file.create_dataset(
-                'timestamps',
-                data=self.ir_2_timestamp,
-                compression=self.ir_2_compression_alg
-            )
+                )
+                file.create_dataset(
+                    'timestamps',
+                    data=self.ir_2_timestamp,
+                    compression=self.ir_2_compression_alg
+                )
     ##### FujiCam scanner callbacks and functions #####
 
     def fujicam_connect_failed_handler(self, s, client_id, url, err):
