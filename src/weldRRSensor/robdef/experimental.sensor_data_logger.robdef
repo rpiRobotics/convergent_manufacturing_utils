@@ -6,6 +6,7 @@ struct logger_switch_struct
     field bool fujicam_register
     field bool flir_register
     field bool xiris_register
+    field bool pyro_register
     field bool logger_on_off
     field string output_dir 
 end
@@ -20,6 +21,7 @@ struct sensor_switch_struct
     field bool fujicam
     field bool flir
     field bool xiris
+    field bool pyro
 end
 struct sensor_switch_response_struct
     field bool robot_joints_status
@@ -28,6 +30,7 @@ struct sensor_switch_response_struct
     field bool fujicam_status
     field bool flir_status
     field bool xiris_status
+    field bool pyro_status
     field string message
 end
 object sensor_data_logger_obj

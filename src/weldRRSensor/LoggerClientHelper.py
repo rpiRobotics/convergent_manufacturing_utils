@@ -37,7 +37,7 @@ class LoggerClientHelper(object):
 
     def logger_switch(self, switch_on_off, 
                       robot_joints_register=False,fronius_register=False,current_register=False,
-                      fujicam_register=False,flir_register=False,xiris_register=False, output_dir=None, logger_response_timeout=10):
+                      fujicam_register=False,flir_register=False,xiris_register=False,pyro_register=False, output_dir=None, logger_response_timeout=10):
 
         if (switch_on_off) and (output_dir is None):
             print("Warning: switch on needs output directory")
@@ -56,6 +56,7 @@ class LoggerClientHelper(object):
         logger_switch_wire_v.fujicam_register = fujicam_register
         logger_switch_wire_v.flir_register  = flir_register
         logger_switch_wire_v.xiris_register = xiris_register
+        logger_switch_wire_v.pyro_register = pyro_register
         
         logger_switch_wire_v.output_dir = output_dir
         self.logger_switch_wire.OutValue = logger_switch_wire_v # send the wire value
@@ -86,7 +87,7 @@ class LoggerClientHelper(object):
         self._sensor_ready_evt.set()
     
     def loggger_sensor_switch(self,robot_joints_switch=False,fronius_switch=False,current_switch=False,
-                              fujicam_switch=False,flir_switch=False,xiris_switch=False,logger_response_timeout=10.):
+                              fujicam_switch=False,flir_switch=False,xiris_switch=False,pyro_switch=False,logger_response_timeout=10.):
 
         sensor_switch_wire_v = RRN.NewStructure("experimental.sensor_data_logger.sensor_switch_struct")
         sensor_switch_wire_v.robot_joints = robot_joints_switch
@@ -95,6 +96,7 @@ class LoggerClientHelper(object):
         sensor_switch_wire_v.fujicam = fujicam_switch
         sensor_switch_wire_v.flir = flir_switch
         sensor_switch_wire_v.xiris = xiris_switch
+        sensor_switch_wire_v.pyro = pyro_switch
         self.sensor_switch_wire.OutValue = sensor_switch_wire_v
 
         """Wait for the next logger sensor response callback."""
@@ -103,7 +105,7 @@ class LoggerClientHelper(object):
         if not ok:
             # raise TimeoutError(f"Logger did not respond within {logger_response_timeout:.1f}s")
             print(f"Warning: Logger did not respond within {logger_response_timeout:.1f}s")
-            return (False,False,False,False,False,False), ''
+            return (False,False,False,False,False,False,False), ''
 
         with self._sensor_lock:
             value, ts = self._sensor_last_resp
@@ -113,8 +115,9 @@ class LoggerClientHelper(object):
             fujicam_status = value.fujicam_status
             flir_status = value.flir_status
             xiris_status = value.xiris_status
+            pyro_status = value.pyro_status
             sensor_status = (robot_joints_status,fronius_status,current_status,fujicam_status,\
-                             flir_status,xiris_status)
+                             flir_status,xiris_status,pyro_status)
             print("Sensor status: \n", str(value.message))
 
         # Reset for next use (important!)

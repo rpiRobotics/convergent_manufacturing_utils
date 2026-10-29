@@ -25,6 +25,7 @@ class WeldRRSensorLogger(object):
             cam_2_service=None,\
             fujicam_service=None,\
             current_service=None,
+            pyro_service=None,
             msg_type=np.float32) -> None:
         
         # sqlite data logger info
@@ -38,6 +39,7 @@ class WeldRRSensorLogger(object):
         self.cam_2_service = cam_2_service
         self.fujicam_service = fujicam_service
         self.current_service=current_service
+        self.pyro_service = pyro_service
 
         # initialize all callback flags to false to avoid reading the flags before the service is connected and the callback is set
         self.stop_all_sensors()
@@ -113,6 +115,13 @@ class WeldRRSensorLogger(object):
             self.current_state_sub = self.current_service.SubscribeWire("current")
             self.current_state_sub.WireValueChanged += self.current_cb
 
+        ## pyrometer service
+        if self.pyro_service:
+            self.pyro_data_shape = (10,) # valid, process, ratio, t1, t2, attenuation, box, detector, imbalance, latency_ms
+            self.pyro_topic_name = "pyrometer"
+            self.pyro_state_sub = self.pyro_service.SubscribeWire("reading")
+            self.pyro_state_sub.WireValueChanged += self.pyro_cb
+
         ## calculate time offset
         self.t_offset = RRN.NowNodeTime().timestamp()-time.perf_counter()
 
@@ -166,6 +175,9 @@ class WeldRRSensorLogger(object):
                     if value.current_register:
                         self.logger.register_topic(self.current_topic_name, "float32", self.current_data_shape)
                         msg += '\nRegister current message'
+                    if value.pyro_register and self.pyro_service:
+                        self.logger.register_topic(self.pyro_topic_name, "float32", self.pyro_data_shape)
+                        msg += '\nRegister pyrometer message'
                     if value.fujicam_register:
                         self.logger.register_topic(self.fujicam_topic_name, "float32", self.fujicam_data_shape)
                         msg += '\nRegister FujiCam Line Scan message'
@@ -266,6 +278,15 @@ class WeldRRSensorLogger(object):
                     self.start_ir_2_cb=False
                 else:
                     msg += "\nXiris camera service not connected."
+
+                if value.pyro and self.pyro_service:
+                    msg += "\nPyrometer recording enabled."
+                    self.start_pyro_cb=True
+                elif self.pyro_service:
+                    msg += "\nPyrometer recording disabled."
+                    self.start_pyro_cb=False
+                else:
+                    msg += "\nPyrometer service not connected."
             
             print(msg)
             sensor_switch_response_wire_v = RRN.NewStructure("experimental.sensor_data_logger.sensor_switch_response_struct")
@@ -275,6 +296,7 @@ class WeldRRSensorLogger(object):
             sensor_switch_response_wire_v.fujicam_status = self.start_fujicam_cb
             sensor_switch_response_wire_v.flir_status = self.start_ir_cb
             sensor_switch_response_wire_v.xiris_status = self.start_ir_2_cb
+            sensor_switch_response_wire_v.pyro_status = self.start_pyro_cb
             sensor_switch_response_wire_v.message = msg
             self.sensor_switch_response.OutValue = sensor_switch_response_wire_v
         except:
@@ -294,6 +316,8 @@ class WeldRRSensorLogger(object):
             self.start_current_cb=True
         if self.robot_service:
             self.start_robot_cb = True
+        if self.pyro_service:
+            self.start_pyro_cb=True
 
     def stop_all_sensors(self):
 
@@ -304,6 +328,7 @@ class WeldRRSensorLogger(object):
         self.start_ir_2_cb=False
         self.start_fujicam_cb=False
         self.start_current_cb=False
+        self.start_pyro_cb=False
     
     ##### robot state recording callbacks and functions #####
     def robot_state_cb(self, sub, value, ts):
@@ -327,6 +352,16 @@ class WeldRRSensorLogger(object):
             current_data = np.array([value], dtype=self.msg_type)
             timestamp_ns = int((time.perf_counter()+self.t_offset)*1e9)
             self.logger.log_data(self.current_topic_name, current_data, timestamp_ns=timestamp_ns)
+
+    def pyro_cb(self, sub, value, ts):
+        #log every sample including invalid ones
+        if self.start_pyro_cb:
+            pyro_data = np.array([value.valid, value.process_temp, value.ratio_temp,
+                                  value.t1_temp, value.t2_temp, value.attenuation,
+                                  value.box_temp, value.detector_temp, value.imbalance,
+                                  value.latency_ms], dtype=self.msg_type)
+            timestamp_ns = int((time.perf_counter()+self.t_offset)*1e9)
+            self.logger.log_data(self.pyro_topic_name, pyro_data, timestamp_ns=timestamp_ns)
 
     ##### FLIR and Xiris camera callbacks and functions #####
     def ir_cb(self,pipe_ep):
@@ -398,12 +433,14 @@ def arg_parse():
     ap.add_argument("--fujicam", action='store_true', help="Log FujiCam scanner data")
     ap.add_argument("--flir", action='store_true', help="Log FLIR camera data")
     ap.add_argument("--xiris", action='store_true', help="Log Xiris camera data")
+    ap.add_argument("--pyro", action='store_true', help="Log pyrometer data")
     ap.add_argument("--robot_joints_url", type=str, default='rr+tcp://localhost:59945?service=robot', help="URL for robot joint state service")
     ap.add_argument("--fronius_url", type=str, default='rr+tcp://192.168.55.21:60823?service=welder', help="URL for Fronius welder service")
     ap.add_argument("--current_url", type=str, default='rr+tcp://192.168.55.21:12182?service=Current', help="URL for Current clamp service")
     ap.add_argument("--fujicam_url", type=str, default='rr+tcp://localhost:12181/?service=fujicam', help="URL for FujiCam scanner service")
     ap.add_argument("--flir_url", type=str, default='rr+tcp://192.168.55.10:60827/?service=camera', help="URL for FLIR camera service")
     ap.add_argument("--xiris_url", type=str, default='rr+tcp://127.0.0.1:59824/?service=camera', help="URL for Xiris camera service")
+    ap.add_argument("--pyro_url", type=str, default='rr+tcp://localhost:12185?service=pyrometer', help="URL for pyrometer service")
     ap.add_argument("--db_base_name", type=str, default="raw_db", help="Base name for output data files")
     ap.add_argument("--db_queue_max", type=int, default=4000, help="Max queue size for data logger")
     ap.add_argument("--db_batch_size", type=int, default=256, help="Batch size for data logger commits")
@@ -463,6 +500,10 @@ def main():
         if args.xiris:
             xiris_url = args.xiris_url
             xiris_ser=RRN.ConnectService(xiris_url)
+        # Pyrometer
+        pyro_ser = None
+        if args.pyro:
+            pyro_ser=RRN.SubscribeService(args.pyro_url)
 
         # Register the service type
         # RRN.RegisterServiceType(sensor_data_logger)
@@ -479,7 +520,8 @@ def main():
             cam_service=flir_ser,\
             cam_2_service=xiris_ser,\
             fujicam_service=fujicam_ser,\
-            current_service=current_ser)
+            current_service=current_ser,\
+            pyro_service=pyro_ser)
         
         # Register the service
         RRN.RegisterService("weldRRSensor_logger", "experimental.sensor_data_logger.sensor_data_logger_obj", weld_logger)
@@ -497,6 +539,7 @@ def main():
         print("Fujicam scanner: ", args.fujicam)
         print("FLIR camera: ", args.flir)
         print("Xiris camera: ", args.xiris)
+        print("Pyrometer: ", args.pyro)
         
         input("Press Enter to exit...\n")
         if hasattr(weld_logger, 'logger') and weld_logger.logger is not None:

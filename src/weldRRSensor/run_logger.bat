@@ -1,0 +1,1 @@
+python .\weldRRSensor_logger.py --robot_joints --fujicam --xiris --flir --fronius --current --pyro --db_status_update_interval 60 --db_rollover_max_GB 10 --db_batch_size=4096 --db_commit_period_s 1.0 --db_queue_max 8000
